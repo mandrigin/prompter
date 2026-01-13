@@ -225,9 +225,29 @@ class DataStore: ObservableObject {
     }
 
     private func seedDefaultTemplatesIfNeeded() {
-        let hasDefaults = templates.contains { $0.isDefault }
-        if !hasDefaults {
-            templates = DefaultTemplates.createDefaults()
+        // Get existing template names for comparison
+        let existingNames = Set(templates.map { $0.name })
+
+        // Find highest current sortOrder to append new templates after existing ones
+        let maxSortOrder = templates.map { $0.sortOrder }.max() ?? -1
+
+        // Add any missing default templates
+        var addedCount = 0
+        for defaultTemplate in DefaultTemplates.templates {
+            if !existingNames.contains(defaultTemplate.name) {
+                let newTemplate = CustomTemplate(
+                    name: defaultTemplate.name,
+                    content: defaultTemplate.content,
+                    isDefault: true,
+                    sortOrder: maxSortOrder + 1 + addedCount
+                )
+                templates.append(newTemplate)
+                addedCount += 1
+            }
+        }
+
+        // Save if any new templates were added
+        if addedCount > 0 {
             saveTemplates()
         }
     }
