@@ -397,6 +397,7 @@ struct AutoResizingPromptInput: View {
 
     @FocusState private var isFocused: Bool
     @State private var textHeight: CGFloat = 60
+    @State private var containerWidth: CGFloat = 0
 
     private let minHeight: CGFloat = 60
     private let maxHeight: CGFloat = 200
@@ -409,14 +410,13 @@ struct AutoResizingPromptInput: View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
             // Auto-resizing text input
             ZStack(alignment: .topLeading) {
-                // Hidden text for measuring - must match TextEditor's layout
+                // Hidden text for measuring - needs concrete width for proper wrapping
                 Text(text.isEmpty ? " " : text)
                     .font(Theme.bodyFont(14))
                     .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
                     .padding(Theme.spacingM)
-                    .opacity(0)
+                    .frame(width: containerWidth > 0 ? containerWidth : nil, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .background(
                         GeometryReader { geo in
                             Color.clear.preference(
@@ -425,6 +425,7 @@ struct AutoResizingPromptInput: View {
                             )
                         }
                     )
+                    .opacity(0)
 
                 // Actual text editor
                 TextEditor(text: $text)
@@ -438,6 +439,16 @@ struct AutoResizingPromptInput: View {
                     .disabled(isGenerating)
             }
             .frame(height: max(minHeight, min(textHeight, maxHeight)))
+            .frame(maxWidth: .infinity)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { containerWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { _, newWidth in
+                            containerWidth = newWidth
+                        }
+                }
+            )
             .themedInput(isFocused: isFocused)
             .onPreferenceChange(TextHeightKey.self) { height in
                 withAnimation(.easeOut(duration: 0.1)) {
