@@ -133,11 +133,16 @@ struct HistorySidebar: View {
             Text("Archived (\(archivedHistory.count))")
                 .font(.system(size: 10, weight: .semibold))
             Spacer()
-            Button(action: { showArchived.toggle() }) {
-                Image(systemName: showArchived ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 9))
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    showArchived.toggle()
+                }
+            }) {
+                Text(showArchived ? "Hide" : "Show")
+                    .font(.system(size: 9, weight: .medium))
             }
             .buttonStyle(.plain)
+            .foregroundColor(.accentColor)
         }
         .foregroundColor(.secondary)
     }
