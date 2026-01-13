@@ -48,7 +48,7 @@ struct SettingsView: View {
             }
             .padding()
         }
-        .frame(width: 500, height: 400)
+        .frame(minWidth: 500, minHeight: 400)
     }
 }
 
@@ -116,7 +116,7 @@ struct GeneralSettingsView: View {
             Section("System Prompt") {
                 TextEditor(text: $systemPrompt)
                     .font(.system(size: 11, design: .monospaced))
-                    .frame(height: 120)
+                    .frame(minHeight: 120, maxHeight: .infinity)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .background(Color(NSColor.textBackgroundColor))
