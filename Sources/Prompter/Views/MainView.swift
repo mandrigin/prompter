@@ -5,10 +5,9 @@ struct MainView: View {
     @AppStorage("systemPrompt") private var systemPrompt = defaultSystemPrompt
 
     @State private var promptText: String = ""
-    @State private var selectedMode: PromptMode = .primary
     @State private var showingHistory: Bool = true
     @State private var isGenerating: Bool = false
-    @State private var generatedVariants: PromptVariants? = nil
+    @State private var generatedPrompt: String? = nil
     @State private var generationError: String? = nil
     @State private var generationTask: Task<Void, Never>? = nil
     @State private var showingErrorAlert: Bool = false
@@ -22,7 +21,6 @@ struct MainView: View {
                     history: dataStore.history,
                     onSelect: { item in
                         promptText = item.prompt
-                        selectedMode = item.mode
                     },
                     onDelete: { item in
                         dataStore.deleteHistoryItem(item)
@@ -35,20 +33,14 @@ struct MainView: View {
                     }
                 )
                 .frame(minWidth: 150, maxWidth: 200)
-                .transition(.move(edge: .leading).combined(with: .opacity))
             }
 
             VStack(spacing: 0) {
-                // Mode tabs
-                ModeTabBar(selectedMode: $selectedMode)
-
-                Divider()
-
                 // Main content
                 VStack(spacing: 12) {
                     // Template picker
                     TemplatePicker(
-                        templates: dataStore.templatesForMode(selectedMode),
+                        templates: dataStore.sortedTemplates,
                         onSelect: { template in
                             promptText = template.content
                         }
@@ -57,50 +49,18 @@ struct MainView: View {
                     // Prompt input
                     PromptInputField(
                         text: $promptText,
-                        mode: selectedMode,
                         isGenerating: isGenerating,
                         onSubmit: submitPrompt
                     )
 
-                    // Generated variants display
+                    // Generated output display
                     if isGenerating {
-                        VStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.regular)
-                            Text("Generating variants...")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-
-                            Spacer()
-
-                            Button(action: cancelGeneration) {
-                                Text("Cancel")
-                                    .font(.system(size: 11))
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
-                        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-                        .cornerRadius(8)
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                    } else if let variants = generatedVariants {
-                        OutputView(variants: variants, selectedMode: selectedMode)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .top)),
-                                removal: .opacity
-                            ))
-                        VariantsView(variants: variants, selectedMode: $selectedMode)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                removal: .opacity
-                            ))
+                        GeneratingView(onCancel: cancelGeneration)
+                    } else if let output = generatedPrompt {
+                        MarkdownOutputView(content: output)
                     }
                 }
                 .padding()
-                .animation(.easeInOut(duration: 0.3), value: isGenerating)
-                .animation(.easeInOut(duration: 0.3), value: generatedVariants != nil)
 
                 Spacer()
 
@@ -108,8 +68,7 @@ struct MainView: View {
                 BottomToolbar(showingHistory: $showingHistory)
             }
         }
-        .frame(minWidth: 600, minHeight: 400)
-        .animation(.easeInOut(duration: 0.25), value: showingHistory)
+        .frame(minWidth: 400, minHeight: 300)
         .alert("Generation Failed", isPresented: $showingErrorAlert) {
             Button("Dismiss", role: .cancel) {
                 generationError = nil
@@ -123,11 +82,11 @@ struct MainView: View {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
-        let historyItem = PromptHistory(prompt: trimmedPrompt, mode: selectedMode)
+        let historyItem = PromptHistory(prompt: trimmedPrompt)
         dataStore.addHistoryItem(historyItem)
 
         // Clear previous results and start generation
-        generatedVariants = nil
+        generatedPrompt = nil
         generationError = nil
         isGenerating = true
 
@@ -137,13 +96,13 @@ struct MainView: View {
 
         generationTask = Task {
             do {
-                let variants = try await promptService.generateVariants(
+                let output = try await promptService.generatePrompt(
                     for: inputPrompt,
                     systemPrompt: currentSystemPrompt
                 )
                 if !Task.isCancelled {
                     await MainActor.run {
-                        generatedVariants = variants
+                        generatedPrompt = output
                         isGenerating = false
                         generationTask = nil
                     }
@@ -165,53 +124,6 @@ struct MainView: View {
         generationTask?.cancel()
         generationTask = nil
         isGenerating = false
-        generationError = "Generation cancelled"
-    }
-}
-
-struct ModeTabBar: View {
-    @Binding var selectedMode: PromptMode
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(PromptMode.allCases, id: \.self) { mode in
-                ModeTab(
-                    mode: mode,
-                    isSelected: selectedMode == mode,
-                    action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedMode = mode
-                        }
-                    }
-                )
-            }
-        }
-        .background(Color(NSColor.controlBackgroundColor))
-    }
-}
-
-struct ModeTab: View {
-    let mode: PromptMode
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Text(mode.rawValue)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
-
-                Rectangle()
-                    .fill(isSelected ? Color.accentColor : Color.clear)
-                    .frame(height: 2)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(.plain)
-        .help(mode.description)
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 }
 
@@ -243,7 +155,6 @@ struct TemplatePicker: View {
 
 struct PromptInputField: View {
     @Binding var text: String
-    let mode: PromptMode
     var isGenerating: Bool = false
     let onSubmit: () -> Void
 
@@ -263,7 +174,7 @@ struct PromptInputField: View {
                 .disabled(isGenerating)
 
             HStack {
-                Text("\(mode.rawValue) mode")
+                Text("Enter your prompt idea")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
 
@@ -271,8 +182,8 @@ struct PromptInputField: View {
 
                 Button(action: onSubmit) {
                     HStack(spacing: 4) {
-                        Image(systemName: "paperplane.fill")
-                        Text("Send")
+                        Image(systemName: "sparkles")
+                        Text("Generate")
                     }
                     .font(.system(size: 12))
                 }
@@ -281,6 +192,94 @@ struct PromptInputField: View {
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
                 .keyboardShortcut(.return, modifiers: .command)
             }
+        }
+    }
+}
+
+struct GeneratingView: View {
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.regular)
+            Text("Generating improved prompt...")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            Button(action: onCancel) {
+                Text("Cancel")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .cornerRadius(8)
+    }
+}
+
+struct MarkdownOutputView: View {
+    let content: String
+
+    @State private var isCopied = false
+
+    private var attributedContent: AttributedString {
+        (try? AttributedString(markdown: content)) ?? AttributedString(content)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Generated Prompt")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Button(action: copyToClipboard) {
+                    HStack(spacing: 4) {
+                        Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                        Text(isCopied ? "Copied!" : "Copy")
+                    }
+                    .font(.system(size: 11))
+                    .foregroundColor(isCopied ? .green : .accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Copy to clipboard")
+            }
+
+            ScrollView {
+                Text(attributedContent)
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(minHeight: 100, maxHeight: 250)
+            .padding(12)
+            .background(Color(NSColor.textBackgroundColor))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .padding(12)
+        .background(Color.accentColor.opacity(0.05))
+        .cornerRadius(10)
+    }
+
+    private func copyToClipboard() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(content, forType: .string)
+        isCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            isCopied = false
         }
     }
 }
@@ -313,202 +312,5 @@ struct BottomToolbar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(NSColor.controlBackgroundColor))
-    }
-}
-
-struct VariantsView: View {
-    let variants: PromptVariants
-    @Binding var selectedMode: PromptMode
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Generated Variants")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary)
-
-            ScrollView {
-                VStack(spacing: 10) {
-                    VariantCard(
-                        title: "Primary",
-                        content: variants.primary,
-                        isSelected: selectedMode == .primary,
-                        color: .blue,
-                        onSelect: { selectedMode = .primary }
-                    )
-
-                    VariantCard(
-                        title: "Strict",
-                        content: variants.strict,
-                        isSelected: selectedMode == .strict,
-                        color: .orange,
-                        onSelect: { selectedMode = .strict }
-                    )
-
-                    VariantCard(
-                        title: "Exploratory",
-                        content: variants.exploratory,
-                        isSelected: selectedMode == .exploratory,
-                        color: .purple,
-                        onSelect: { selectedMode = .exploratory }
-                    )
-                }
-            }
-            .frame(maxHeight: 300)
-        }
-    }
-}
-
-struct VariantCard: View {
-    let title: String
-    let content: String
-    let isSelected: Bool
-    let color: Color
-    let onSelect: () -> Void
-
-    @State private var isCopied = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Circle()
-                    .fill(color)
-                    .frame(width: 8, height: 8)
-
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(color)
-
-                Spacer()
-
-                Button(action: copyToClipboard) {
-                    Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 10))
-                }
-                .buttonStyle(.plain)
-                .help("Copy to clipboard")
-            }
-
-            Text(content)
-                .font(.system(size: 12))
-                .foregroundColor(.primary)
-                .lineLimit(4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? color.opacity(0.1) : Color(NSColor.controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? color : Color(NSColor.separatorColor), lineWidth: isSelected ? 2 : 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
-        .animation(.easeInOut(duration: 0.15), value: isCopied)
-    }
-
-    private func copyToClipboard() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(content, forType: .string)
-        withAnimation {
-            isCopied = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation {
-                isCopied = false
-            }
-        }
-    }
-}
-
-struct OutputView: View {
-    let variants: PromptVariants
-    let selectedMode: PromptMode
-
-    @State private var isCopied = false
-
-    private var currentVariant: String {
-        switch selectedMode {
-        case .primary:
-            return variants.primary
-        case .strict:
-            return variants.strict
-        case .exploratory:
-            return variants.exploratory
-        }
-    }
-
-    private var modeColor: Color {
-        switch selectedMode {
-        case .primary:
-            return .blue
-        case .strict:
-            return .orange
-        case .exploratory:
-            return .purple
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Circle()
-                    .fill(modeColor)
-                    .frame(width: 10, height: 10)
-
-                Text("\(selectedMode.rawValue) Output")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                Button(action: copyToClipboard) {
-                    HStack(spacing: 4) {
-                        Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        Text(isCopied ? "Copied!" : "Copy")
-                    }
-                    .font(.system(size: 11))
-                    .foregroundColor(isCopied ? .green : .accentColor)
-                }
-                .buttonStyle(.plain)
-                .help("Copy to clipboard")
-            }
-
-            ScrollView {
-                Text(currentVariant)
-                    .font(.system(size: 13))
-                    .foregroundColor(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-            }
-            .frame(minHeight: 60, maxHeight: 120)
-            .padding(10)
-            .background(Color(NSColor.textBackgroundColor))
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(modeColor.opacity(0.5), lineWidth: 2)
-            )
-        }
-        .padding(12)
-        .background(modeColor.opacity(0.05))
-        .cornerRadius(10)
-        .animation(.easeInOut(duration: 0.2), value: selectedMode)
-        .animation(.easeInOut(duration: 0.15), value: isCopied)
-    }
-
-    private func copyToClipboard() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(currentVariant, forType: .string)
-        withAnimation {
-            isCopied = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation {
-                isCopied = false
-            }
-        }
     }
 }
