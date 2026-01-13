@@ -9,6 +9,12 @@ enum GenerationStatus: String, Codable {
     case cancelled
 }
 
+/// Type of prompt generation (short/concise vs long/detailed)
+enum PromptLength: String, Codable {
+    case short
+    case long
+}
+
 struct PromptHistory: Codable, Identifiable, Equatable {
     var id: UUID
     var prompt: String
@@ -18,8 +24,10 @@ struct PromptHistory: Codable, Identifiable, Equatable {
     var isArchived: Bool
     var generationStatus: GenerationStatus?
     var errorMessage: String?
+    /// Which generation type is currently active (nil if not generating)
+    var activeGeneration: PromptLength?
 
-    init(id: UUID = UUID(), prompt: String, generatedOutput: String? = nil, timestamp: Date = Date(), isFavorite: Bool = false, isArchived: Bool = false, generationStatus: GenerationStatus? = nil, errorMessage: String? = nil) {
+    init(id: UUID = UUID(), prompt: String, generatedOutput: String? = nil, timestamp: Date = Date(), isFavorite: Bool = false, isArchived: Bool = false, generationStatus: GenerationStatus? = nil, errorMessage: String? = nil, activeGeneration: PromptLength? = nil) {
         self.id = id
         self.prompt = prompt
         self.generatedOutput = generatedOutput
@@ -28,6 +36,7 @@ struct PromptHistory: Codable, Identifiable, Equatable {
         self.isArchived = isArchived
         self.generationStatus = generationStatus
         self.errorMessage = errorMessage
+        self.activeGeneration = activeGeneration
     }
 
     /// Whether this history item has a generated result
