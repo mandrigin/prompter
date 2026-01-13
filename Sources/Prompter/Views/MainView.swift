@@ -312,17 +312,18 @@ struct AutoResizingPromptInput: View {
     @State private var textHeight: CGFloat = 60
 
     private let minHeight: CGFloat = 60
-    private let maxHeight: CGFloat = 300
-    private let lineHeight: CGFloat = 22
+    private let maxHeight: CGFloat = 200
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
             // Auto-resizing text input
             ZStack(alignment: .topLeading) {
-                // Hidden text for measuring
+                // Hidden text for measuring - must match TextEditor's layout
                 Text(text.isEmpty ? " " : text)
                     .font(Theme.bodyFont(14))
                     .lineSpacing(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(Theme.spacingM)
                     .opacity(0)
                     .background(
@@ -340,7 +341,7 @@ struct AutoResizingPromptInput: View {
                     .foregroundColor(Theme.textPrimary)
                     .lineSpacing(4)
                     .scrollContentBackground(.hidden)
-                    .scrollDisabled(true)
+                    .scrollDisabled(textHeight <= maxHeight)
                     .padding(Theme.spacingM)
                     .focused($isFocused)
                     .disabled(isGenerating)
@@ -348,7 +349,9 @@ struct AutoResizingPromptInput: View {
             .frame(height: max(minHeight, min(textHeight, maxHeight)))
             .themedInput(isFocused: isFocused)
             .onPreferenceChange(TextHeightKey.self) { height in
-                textHeight = height
+                withAnimation(.easeOut(duration: 0.1)) {
+                    textHeight = height
+                }
             }
 
             // Bottom row with hint and button
