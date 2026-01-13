@@ -3,6 +3,7 @@ import SwiftUI
 struct HistorySidebar: View {
     let history: [PromptHistory]
     let activeRequestIds: Set<UUID>
+    let selectedItemId: UUID?
     let onSelect: (PromptHistory) -> Void
     let onDelete: (PromptHistory) -> Void
     let onArchive: (PromptHistory) -> Void
@@ -108,6 +109,7 @@ struct HistorySidebar: View {
                                 ForEach(items) { item in
                                     HistoryRow(
                                         item: item,
+                                        isSelected: selectedItemId == item.id,
                                         isActivelyGenerating: activeRequestIds.contains(item.id),
                                         onSelect: onSelect,
                                         onDelete: onDelete,
@@ -124,6 +126,7 @@ struct HistorySidebar: View {
                                     ForEach(archivedHistory) { item in
                                         HistoryRow(
                                             item: item,
+                                            isSelected: selectedItemId == item.id,
                                             isActivelyGenerating: activeRequestIds.contains(item.id),
                                             onSelect: onSelect,
                                             onDelete: onDelete,
@@ -150,6 +153,7 @@ struct HistorySidebar: View {
                         ForEach(items) { item in
                             HistoryRow(
                                 item: item,
+                                isSelected: selectedItemId == item.id,
                                 isActivelyGenerating: activeRequestIds.contains(item.id),
                                 onSelect: onSelect,
                                 onDelete: onDelete,
@@ -219,6 +223,7 @@ struct HistorySidebar: View {
 
 struct HistoryRow: View {
     let item: PromptHistory
+    let isSelected: Bool
     let isActivelyGenerating: Bool
     let onSelect: (PromptHistory) -> Void
     let onDelete: (PromptHistory) -> Void
@@ -226,6 +231,15 @@ struct HistoryRow: View {
     let onUnarchive: (PromptHistory) -> Void
 
     @State private var isHovered = false
+
+    private var displayText: String {
+        let trimmed = item.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "<empty>" : item.prompt
+    }
+
+    private var isEmptyPrompt: Bool {
+        item.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var statusColor: Color {
         if isActivelyGenerating {
@@ -265,11 +279,12 @@ struct HistoryRow: View {
 
             VStack(alignment: .leading, spacing: Theme.spacingXS) {
                 HStack(spacing: Theme.spacingXS) {
-                    Text(item.prompt)
+                    Text(displayText)
                         .font(Theme.captionFont(12))
+                        .italic(isEmptyPrompt)
                         .lineSpacing(2)
                         .lineLimit(2)
-                        .foregroundColor(Theme.textPrimary)
+                        .foregroundColor(isEmptyPrompt ? Theme.textTertiary : Theme.textPrimary)
 
                     if item.isArchived {
                         Image(systemName: "archivebox")
@@ -299,7 +314,11 @@ struct HistoryRow: View {
         .padding(.vertical, Theme.spacingS)
         .background(
             RoundedRectangle(cornerRadius: Theme.radiusS)
-                .fill(isHovered ? Theme.elevated.opacity(0.5) : Color.clear)
+                .fill(isSelected ? Theme.accent.opacity(0.2) : (isHovered ? Theme.elevated.opacity(0.5) : Color.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radiusS)
+                .stroke(isSelected ? Theme.accent.opacity(0.5) : Color.clear, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
@@ -328,6 +347,7 @@ struct HistoryRow: View {
             }
         }
         .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 
     private func formatDate(_ date: Date) -> String {

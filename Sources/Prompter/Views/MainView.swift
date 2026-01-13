@@ -43,6 +43,7 @@ struct MainView: View {
                 HistorySidebar(
                     history: dataStore.history,
                     activeRequestIds: dataStore.generatingItemId.map { Set([$0]) } ?? Set(),
+                    selectedItemId: selectedItemId,
                     onSelect: { item in
                         selectHistoryItem(item)
                     },
@@ -59,8 +60,7 @@ struct MainView: View {
                         dataStore.unarchiveHistoryItem(item)
                     },
                     onCreate: {
-                        selectedItemId = nil
-                        promptText = ""
+                        createNewPrompt()
                     }
                 )
                 .frame(minWidth: 180, maxWidth: 240)
@@ -137,14 +137,29 @@ struct MainView: View {
         promptText = item.prompt
     }
 
+    private func createNewPrompt() {
+        // Create a new empty prompt item and select it
+        let newItem = PromptHistory(prompt: "", generationStatus: .pending)
+        dataStore.addHistoryItem(newItem)
+        selectedItemId = newItem.id
+        promptText = ""
+    }
+
     private func submitPrompt(length: PromptLength) {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
         let itemId: UUID
 
-        // Check if this prompt already exists - if so, add a new version instead of creating duplicate
-        if let existingItem = dataStore.findExistingPrompt(trimmedPrompt) {
+        // Check if we have an empty selected item - update it instead of creating new
+        if let currentId = selectedItemId,
+           let currentItem = dataStore.historyItem(byId: currentId),
+           currentItem.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Update the empty prompt with the actual text
+            dataStore.updatePromptText(id: currentId, prompt: trimmedPrompt)
+            itemId = currentId
+        } else if let existingItem = dataStore.findExistingPrompt(trimmedPrompt) {
+            // Check if this prompt already exists - if so, add a new version instead of creating duplicate
             itemId = existingItem.id
         } else {
             // Create new history item with generating status

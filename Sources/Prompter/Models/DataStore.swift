@@ -89,6 +89,13 @@ class DataStore: ObservableObject {
         }
     }
 
+    func updatePromptText(id: UUID, prompt: String) {
+        if let index = history.firstIndex(where: { $0.id == id }) {
+            history[index].prompt = prompt
+            saveHistory()
+        }
+    }
+
     // MARK: - Generation Status Management
 
     func updateGenerationStatus(id: UUID, status: GenerationStatus, error: String? = nil) {
