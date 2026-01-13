@@ -1,4 +1,5 @@
 import SwiftUI
+import MarkdownUI
 
 struct MainView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -319,10 +320,6 @@ struct MarkdownOutputView: View {
 
     @State private var isCopied = false
 
-    private var attributedContent: AttributedString {
-        (try? AttributedString(markdown: content)) ?? AttributedString(content)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
             // Header
@@ -345,14 +342,12 @@ struct MarkdownOutputView: View {
                 .help("Copy to clipboard")
             }
 
-            // Content - expands to fill available space
+            // Content - MarkdownUI for proper rendering
             ScrollView {
-                Text(attributedContent)
-                    .font(Theme.bodyFont(14))
-                    .foregroundColor(Theme.textPrimary)
-                    .lineSpacing(5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Markdown(content)
+                    .markdownTheme(.royalVelvet)
                     .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(Theme.spacingM)
@@ -384,6 +379,92 @@ struct MarkdownOutputView: View {
             isCopied = false
         }
     }
+}
+
+// MARK: - Custom Markdown Theme
+
+extension MarkdownUI.Theme {
+    static let royalVelvet = MarkdownUI.Theme()
+        .text {
+            ForegroundColor(Theme.textPrimary)
+            FontSize(14)
+        }
+        .code {
+            FontFamilyVariant(.monospaced)
+            FontSize(13)
+            ForegroundColor(Theme.accentLight)
+            BackgroundColor(Theme.card)
+        }
+        .strong {
+            FontWeight(.semibold)
+        }
+        .emphasis {
+            FontStyle(.italic)
+        }
+        .link {
+            ForegroundColor(Theme.accent)
+        }
+        .codeBlock { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontFamilyVariant(.monospaced)
+                    FontSize(13)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .padding(Theme.spacingM)
+                .background(Theme.card)
+                .cornerRadius(Theme.radiusS)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radiusS)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
+                .markdownMargin(top: 8, bottom: 8)
+        }
+        .heading1 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.bold)
+                    FontSize(20)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .markdownMargin(top: 16, bottom: 8)
+        }
+        .heading2 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    FontSize(17)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .markdownMargin(top: 12, bottom: 6)
+        }
+        .heading3 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    FontSize(15)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .markdownMargin(top: 10, bottom: 4)
+        }
+        .paragraph { configuration in
+            configuration.label
+                .markdownMargin(top: 0, bottom: 12)
+        }
+        .listItem { configuration in
+            configuration.label
+                .markdownMargin(top: 4, bottom: 4)
+        }
+        .blockquote { configuration in
+            configuration.label
+                .padding(.leading, Theme.spacingM)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Theme.accent.opacity(0.5))
+                        .frame(width: 3)
+                }
+                .markdownMargin(top: 8, bottom: 8)
+        }
 }
 
 // MARK: - Bottom Toolbar
