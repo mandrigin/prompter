@@ -33,6 +33,7 @@ struct MainView: View {
                     }
                 )
                 .frame(minWidth: 150, maxWidth: 200)
+                .transition(.move(edge: .leading))
             }
 
             VStack(spacing: 0) {
@@ -289,7 +290,11 @@ struct BottomToolbar: View {
 
     var body: some View {
         HStack {
-            Button(action: { showingHistory.toggle() }) {
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showingHistory.toggle()
+                }
+            }) {
                 Image(systemName: showingHistory ? "sidebar.left" : "sidebar.leading")
             }
             .buttonStyle(.plain)
