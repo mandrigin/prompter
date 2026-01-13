@@ -160,16 +160,15 @@ struct HistorySidebar: View {
                 .textCase(.uppercase)
                 .tracking(0.5)
             Spacer()
-            Button(action: { withAnimation { showArchived.toggle() } }) {
-                Image(systemName: showArchived ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .medium))
-            }
-            .buttonStyle(.plain)
+            Image(systemName: showArchived ? "chevron.down" : "chevron.right")
+                .font(.system(size: 10, weight: .medium))
         }
         .foregroundColor(Theme.textTertiary)
         .padding(.horizontal, Theme.spacingM)
         .padding(.vertical, Theme.spacingS)
         .background(Theme.surface.opacity(0.95))
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation { showArchived.toggle() } }
     }
 
     private func emptyState(message: String) -> some View {
