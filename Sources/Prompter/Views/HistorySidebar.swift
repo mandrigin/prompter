@@ -223,8 +223,8 @@ struct HistoryRow: View {
             Spacer()
 
             if isHovered {
-                Button(action: { onDelete(item) }) {
-                    Image(systemName: "xmark.circle.fill")
+                Button(action: { item.isArchived ? onUnarchive(item) : onArchive(item) }) {
+                    Image(systemName: item.isArchived ? "tray.and.arrow.up" : "archivebox")
                         .font(.system(size: 14))
                         .foregroundColor(Theme.textTertiary)
                 }
