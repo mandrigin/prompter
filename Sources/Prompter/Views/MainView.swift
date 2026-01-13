@@ -37,6 +37,13 @@ struct MainView: View {
         selectedItem?.generatedOutput
     }
 
+    /// Whether to show expanded input (no output yet) or compact input (has output)
+    private var showExpandedInput: Bool {
+        // Show expanded when: no item selected, or selected item has no output and isn't generating
+        guard let item = selectedItem else { return true }
+        return !item.hasResult && !isSelectedItemGenerating
+    }
+
     var body: some View {
         HSplitView {
             if showingHistory {
@@ -71,10 +78,9 @@ struct MainView: View {
                 // Draggable title area
                 WindowDragArea()
 
-                // Global scrollable content area
-                ScrollView {
+                if showExpandedInput {
+                    // EXPANDED STATE: Large input area for new prompts
                     VStack(spacing: Theme.spacingL) {
-                        // Template picker
                         TemplatePicker(
                             templates: dataStore.sortedTemplates,
                             onSelect: { template in
@@ -82,38 +88,54 @@ struct MainView: View {
                             }
                         )
 
-                        // Prompt input with auto-resize
-                        AutoResizingPromptInput(
+                        PromptInput(
                             text: $promptText,
+                            isExpanded: true,
                             isGenerating: dataStore.generatingItemId != nil,
                             onSubmitShort: { submitPrompt(length: .short) },
                             onSubmitLong: { submitPrompt(length: .long) }
                         )
-
-                        // Generated output display based on selected item state
-                        if isSelectedItemGenerating {
-                            GeneratingView(onCancel: cancelGeneration)
-                        } else if let item = selectedItem {
-                            switch item.generationStatus {
-                            case .completed:
-                                if let output = item.generatedOutput {
-                                    MarkdownOutputView(content: output)
-                                }
-                            case .failed:
-                                FailedGenerationView(
-                                    error: item.errorMessage ?? "Unknown error",
-                                    onRetry: { retryGeneration(item: item) }
-                                )
-                            case .pending, .cancelled, .none:
-                                // Show nothing or a prompt to generate
-                                EmptyView()
-                            case .generating:
-                                // Should not happen if isSelectedItemGenerating is false
-                                GeneratingView(onCancel: cancelGeneration)
-                            }
-                        }
                     }
                     .padding(Theme.spacingXL)
+                } else {
+                    // COMPACT STATE: Small input + prominent output
+                    VStack(spacing: 0) {
+                        // Compact input at top
+                        PromptInput(
+                            text: $promptText,
+                            isExpanded: false,
+                            isGenerating: dataStore.generatingItemId != nil,
+                            onSubmitShort: { submitPrompt(length: .short) },
+                            onSubmitLong: { submitPrompt(length: .long) }
+                        )
+                        .padding(Theme.spacingM)
+
+                        // Output area takes remaining space
+                        ScrollView {
+                            VStack(spacing: Theme.spacingL) {
+                                if isSelectedItemGenerating {
+                                    GeneratingView(onCancel: cancelGeneration)
+                                } else if let item = selectedItem {
+                                    switch item.generationStatus {
+                                    case .completed:
+                                        if let output = item.generatedOutput {
+                                            MarkdownOutputView(content: output)
+                                        }
+                                    case .failed:
+                                        FailedGenerationView(
+                                            error: item.errorMessage ?? "Unknown error",
+                                            onRetry: { retryGeneration(item: item) }
+                                        )
+                                    case .pending, .cancelled, .none:
+                                        EmptyView()
+                                    case .generating:
+                                        GeneratingView(onCancel: cancelGeneration)
+                                    }
+                                }
+                            }
+                            .padding(Theme.spacingXL)
+                        }
+                    }
                 }
 
                 // Bottom toolbar
@@ -387,72 +409,46 @@ struct TemplateChip: View {
     }
 }
 
-// MARK: - Auto-Resizing Prompt Input
+// MARK: - Prompt Input (Two-State: Expanded/Compact)
 
-struct AutoResizingPromptInput: View {
+struct PromptInput: View {
     @Binding var text: String
+    var isExpanded: Bool = true
     var isGenerating: Bool = false
     let onSubmitShort: () -> Void
     let onSubmitLong: () -> Void
 
     @FocusState private var isFocused: Bool
-    @State private var textHeight: CGFloat = 60
-
-    private let minHeight: CGFloat = 60
-    private let maxHeight: CGFloat = 200
 
     private var isDisabled: Bool {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating
     }
 
+    private var compactHeight: CGFloat { 80 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
-            // Auto-resizing text input
-            ZStack(alignment: .topLeading) {
-                // Hidden text for measuring - add trailing newline to match TextEditor cursor space
-                // TextEditor has ~10pt extra internal padding vs Text
-                Text(text.isEmpty ? " " : text + "\n")
-                    .font(Theme.bodyFont(14))
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(Theme.spacingM)
-                    .padding(.vertical, 5) // Account for TextEditor internal padding
-                    .opacity(0)
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear.preference(
-                                key: TextHeightKey.self,
-                                value: geo.size.height
-                            )
-                        }
-                    )
-                    .id(text) // Force re-measurement on text change
-
-                // Actual text editor
-                TextEditor(text: $text)
-                    .font(Theme.bodyFont(14))
-                    .foregroundColor(Theme.textPrimary)
-                    .lineSpacing(4)
-                    .scrollContentBackground(.hidden)
-                    .scrollDisabled(textHeight <= maxHeight)
-                    .padding(Theme.spacingM)
-                    .focused($isFocused)
-                    .disabled(isGenerating)
-            }
-            .frame(height: max(minHeight, min(textHeight, maxHeight)))
-            .themedInput(isFocused: isFocused)
-            .onPreferenceChange(TextHeightKey.self) { height in
-                withAnimation(.easeOut(duration: 0.1)) {
-                    textHeight = height
-                }
-            }
+            // Text input area
+            TextEditor(text: $text)
+                .font(Theme.bodyFont(14))
+                .foregroundColor(Theme.textPrimary)
+                .lineSpacing(4)
+                .scrollContentBackground(.hidden)
+                .padding(Theme.spacingM)
+                .focused($isFocused)
+                .disabled(isGenerating)
+                .frame(maxWidth: .infinity)
+                .frame(height: isExpanded ? nil : compactHeight)
+                .frame(maxHeight: isExpanded ? .infinity : compactHeight)
+                .themedInput(isFocused: isFocused)
 
             // Bottom row with hint and buttons
             HStack(alignment: .center) {
-                Text("Describe what you want to accomplish")
-                    .font(Theme.captionFont())
-                    .foregroundColor(Theme.textTertiary)
+                if isExpanded {
+                    Text("Describe what you want to accomplish")
+                        .font(Theme.captionFont())
+                        .foregroundColor(Theme.textTertiary)
+                }
 
                 Spacer()
 
@@ -508,13 +504,7 @@ struct AutoResizingPromptInput: View {
                 }
             }
         }
-    }
-}
-
-private struct TextHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 60
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+        .animation(.easeInOut(duration: 0.2), value: isExpanded)
     }
 }
 
