@@ -407,6 +407,70 @@ struct MarkdownOutputView: View {
     }
 }
 
+// MARK: - Code Block with Copy Button
+
+struct CodeBlockView: View {
+    let configuration: CodeBlockConfiguration
+
+    @State private var isCopied = false
+    @State private var isHovered = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with language and copy button
+            HStack {
+                if let language = configuration.language {
+                    Text(language)
+                        .font(Theme.captionFont(10))
+                        .foregroundColor(Theme.textTertiary)
+                        .textCase(.uppercase)
+                }
+
+                Spacer()
+
+                Button(action: copyCode) {
+                    HStack(spacing: 4) {
+                        Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                        Text(isCopied ? "Copied" : "Copy")
+                    }
+                    .font(Theme.captionFont(10))
+                    .foregroundColor(isCopied ? Theme.success : Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .opacity(isHovered || isCopied ? 1 : 0)
+            }
+            .padding(.horizontal, Theme.spacingM)
+            .padding(.vertical, Theme.spacingS)
+            .background(Theme.elevated)
+
+            // Code content
+            configuration.label
+                .markdownTextStyle {
+                    FontFamilyVariant(.monospaced)
+                    FontSize(13)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .padding(Theme.spacingM)
+        }
+        .background(Theme.card)
+        .cornerRadius(Theme.radiusS)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radiusS)
+                .stroke(isHovered ? Theme.accent.opacity(0.3) : Theme.border, lineWidth: 1)
+        )
+        .onHover { isHovered = $0 }
+    }
+
+    private func copyCode() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(configuration.content, forType: .string)
+        isCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            isCopied = false
+        }
+    }
+}
+
 // MARK: - Custom Markdown Theme
 
 extension MarkdownUI.Theme {
@@ -431,19 +495,7 @@ extension MarkdownUI.Theme {
             ForegroundColor(Theme.accent)
         }
         .codeBlock { configuration in
-            configuration.label
-                .markdownTextStyle {
-                    FontFamilyVariant(.monospaced)
-                    FontSize(13)
-                    ForegroundColor(Theme.textPrimary)
-                }
-                .padding(Theme.spacingM)
-                .background(Theme.card)
-                .cornerRadius(Theme.radiusS)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.radiusS)
-                        .stroke(Theme.border, lineWidth: 1)
-                )
+            CodeBlockView(configuration: configuration)
                 .markdownMargin(top: 8, bottom: 8)
         }
         .heading1 { configuration in
