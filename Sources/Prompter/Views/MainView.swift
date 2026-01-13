@@ -1,4 +1,5 @@
 import SwiftUI
+import MarkdownUI
 
 struct MainView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -229,10 +230,6 @@ struct MarkdownOutputView: View {
 
     @State private var isCopied = false
 
-    private var attributedContent: AttributedString {
-        (try? AttributedString(markdown: content)) ?? AttributedString(content)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -255,11 +252,10 @@ struct MarkdownOutputView: View {
             }
 
             ScrollView {
-                Text(attributedContent)
-                    .font(.system(size: 13))
-                    .foregroundColor(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Markdown(content)
+                    .markdownTheme(.prompter)
                     .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(minHeight: 100, maxHeight: 250)
             .padding(12)
@@ -283,6 +279,62 @@ struct MarkdownOutputView: View {
             isCopied = false
         }
     }
+}
+
+// MARK: - Custom Markdown Theme
+
+extension Theme {
+    static let prompter = Theme()
+        .text {
+            FontSize(13)
+        }
+        .code {
+            FontFamilyVariant(.monospaced)
+            FontSize(12)
+            BackgroundColor(Color(NSColor.controlBackgroundColor))
+        }
+        .codeBlock { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontFamilyVariant(.monospaced)
+                    FontSize(12)
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(6)
+        }
+        .heading1 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.bold)
+                    FontSize(18)
+                }
+                .markdownMargin(top: 16, bottom: 8)
+        }
+        .heading2 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    FontSize(16)
+                }
+                .markdownMargin(top: 12, bottom: 6)
+        }
+        .heading3 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    FontSize(14)
+                }
+                .markdownMargin(top: 8, bottom: 4)
+        }
+        .listItem { configuration in
+            configuration.label
+                .markdownMargin(top: 4, bottom: 4)
+        }
+        .paragraph { configuration in
+            configuration.label
+                .markdownMargin(top: 0, bottom: 8)
+        }
 }
 
 struct BottomToolbar: View {
