@@ -297,15 +297,42 @@ struct TemplateChip: View {
         Theme.chipColor(for: colorIndex)
     }
 
+    private var icon: String {
+        switch template.name.lowercased() {
+        case let name where name.contains("review"):
+            return "eye"
+        case let name where name.contains("explain"):
+            return "lightbulb"
+        case let name where name.contains("debug"):
+            return "ant"
+        case let name where name.contains("fix"):
+            return "wrench.and.screwdriver"
+        case let name where name.contains("refactor"):
+            return "arrow.triangle.2.circlepath"
+        case let name where name.contains("architecture"):
+            return "building.columns"
+        case let name where name.contains("best") || name.contains("practice"):
+            return "star"
+        case let name where name.contains("test"):
+            return "checkmark.seal"
+        default:
+            return "sparkles"
+        }
+    }
+
     var body: some View {
         Button(action: { onSelect(template) }) {
-            Text(template.name)
-                .font(Theme.captionFont(12))
-                .fontWeight(.medium)
-                .foregroundColor(.white)
-                .padding(.horizontal, Theme.spacingM)
-                .padding(.vertical, Theme.spacingS)
-                .background(
+            HStack(spacing: Theme.spacingXS) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(template.name)
+                    .font(Theme.captionFont(12))
+                    .fontWeight(.medium)
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, Theme.spacingM)
+            .padding(.vertical, Theme.spacingS)
+            .background(
                     RoundedRectangle(cornerRadius: Theme.radiusM)
                         .fill(
                             LinearGradient(
