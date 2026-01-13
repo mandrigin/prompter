@@ -10,6 +10,7 @@ struct MainView: View {
     @State private var isGenerating: Bool = false
     @State private var generatedVariants: PromptVariants? = nil
     @State private var generationError: String? = nil
+    @State private var generationTask: Task<Void, Never>? = nil
 
     private let promptService = PromptService()
 
@@ -61,6 +62,15 @@ struct MainView: View {
                             Text("Generating variants...")
                                 .font(.system(size: 12))
                                 .foregroundColor(.secondary)
+
+                            Spacer()
+
+                            Button(action: cancelGeneration) {
+                                Text("Cancel")
+                                    .font(.system(size: 11))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(.secondary)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
@@ -107,23 +117,36 @@ struct MainView: View {
         let currentSystemPrompt = systemPrompt
         promptText = ""
 
-        Task {
+        generationTask = Task {
             do {
                 let variants = try await promptService.generateVariants(
                     for: inputPrompt,
                     systemPrompt: currentSystemPrompt
                 )
-                await MainActor.run {
-                    generatedVariants = variants
-                    isGenerating = false
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        generatedVariants = variants
+                        isGenerating = false
+                        generationTask = nil
+                    }
                 }
             } catch {
-                await MainActor.run {
-                    generationError = error.localizedDescription
-                    isGenerating = false
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        generationError = error.localizedDescription
+                        isGenerating = false
+                        generationTask = nil
+                    }
                 }
             }
         }
+    }
+
+    private func cancelGeneration() {
+        generationTask?.cancel()
+        generationTask = nil
+        isGenerating = false
+        generationError = "Generation cancelled"
     }
 }
 
