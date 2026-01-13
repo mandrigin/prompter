@@ -1,5 +1,4 @@
 import SwiftUI
-import MarkdownUI
 
 struct MainView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -7,17 +6,23 @@ struct MainView: View {
 
     @State private var promptText: String = ""
     @State private var showingHistory: Bool = true
-    @State private var isGenerating: Bool = false
-    @State private var currentHistoryItem: PromptHistory? = nil
-    @State private var generationError: String? = nil
-    @State private var generationTask: Task<Void, Never>? = nil
+    @State private var activeRequests: [GenerationRequest] = []
+    @State private var generationTasks: [UUID: Task<Void, Never>] = [:]
+    @State private var selectedRequestId: UUID? = nil
     @State private var showingErrorAlert: Bool = false
+    @State private var errorMessage: String? = nil
 
     private let promptService = PromptService()
 
-    /// The output to display - either from current history item or nothing
-    private var displayedOutput: String? {
-        currentHistoryItem?.generatedOutput
+    // Currently selected request (if any)
+    private var selectedRequest: GenerationRequest? {
+        guard let id = selectedRequestId else { return nil }
+        return activeRequests.first { $0.id == id }
+    }
+
+    // Check if any request is currently generating
+    private var hasActiveGeneration: Bool {
+        activeRequests.contains { $0.status == .generating || $0.status == .pending }
     }
 
     var body: some View {
@@ -26,12 +31,9 @@ struct MainView: View {
                 HistorySidebar(
                     history: dataStore.history,
                     onSelect: { item in
-                        selectHistoryItem(item)
+                        promptText = item.prompt
                     },
                     onDelete: { item in
-                        if currentHistoryItem?.id == item.id {
-                            currentHistoryItem = nil
-                        }
                         dataStore.deleteHistoryItem(item)
                     },
                     onArchive: { item in
@@ -59,20 +61,32 @@ struct MainView: View {
                         }
                     )
 
-                    // Prompt input
+                    // Prompt input - always enabled
                     PromptInputField(
                         text: $promptText,
-                        isGenerating: isGenerating,
+                        isGenerating: false,
                         onSubmit: submitPrompt
                     )
 
-                    // Generated output display - fills remaining space
-                    if isGenerating {
-                        GeneratingView(onCancel: cancelGeneration)
-                            .frame(maxHeight: .infinity)
-                    } else if let output = displayedOutput {
-                        MarkdownOutputView(content: output)
-                            .frame(maxHeight: .infinity)
+                    // Active requests indicator
+                    if !activeRequests.isEmpty {
+                        ActiveRequestsBar(
+                            requests: activeRequests,
+                            selectedId: selectedRequestId,
+                            onSelect: { id in
+                                selectedRequestId = id
+                            },
+                            onCancel: cancelRequest
+                        )
+                    }
+
+                    // Output display area - fills remaining space
+                    if let request = selectedRequest {
+                        RequestOutputView(
+                            request: request,
+                            onCancel: { cancelRequest(id: request.id) }
+                        )
+                        .frame(maxHeight: .infinity)
                     } else {
                         Spacer()
                     }
@@ -87,42 +101,39 @@ struct MainView: View {
         .frame(minWidth: 500, minHeight: 400)
         .alert("Generation Failed", isPresented: $showingErrorAlert) {
             Button("Dismiss", role: .cancel) {
-                generationError = nil
+                errorMessage = nil
             }
         } message: {
-            Text(generationError ?? "An unknown error occurred")
+            Text(errorMessage ?? "An unknown error occurred")
         }
-    }
-
-    private func selectHistoryItem(_ item: PromptHistory) {
-        // Cancel any ongoing generation
-        if isGenerating {
-            cancelGeneration()
-        }
-
-        // Set the prompt text and current item
-        promptText = item.prompt
-        currentHistoryItem = item
     }
 
     private func submitPrompt() {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
-        // Create new history item and set it as current
+        // Create history item
         let historyItem = PromptHistory(prompt: trimmedPrompt)
         dataStore.addHistoryItem(historyItem)
-        currentHistoryItem = historyItem
 
-        generationError = nil
-        isGenerating = true
+        // Create generation request
+        var request = GenerationRequest(
+            id: historyItem.id,
+            inputPrompt: trimmedPrompt,
+            systemPrompt: systemPrompt
+        )
+        request.status = .generating
 
-        let inputPrompt = trimmedPrompt
-        let currentSystemPrompt = systemPrompt
-        let itemId = historyItem.id
+        activeRequests.insert(request, at: 0)
+        selectedRequestId = request.id
         promptText = ""
 
-        generationTask = Task {
+        // Start generation task
+        let requestId = request.id
+        let inputPrompt = request.inputPrompt
+        let currentSystemPrompt = request.systemPrompt
+
+        let task = Task {
             do {
                 let output = try await promptService.generatePrompt(
                     for: inputPrompt,
@@ -130,33 +141,204 @@ struct MainView: View {
                 )
                 if !Task.isCancelled {
                     await MainActor.run {
-                        // Update the history item with the generated output
-                        if let item = dataStore.history.first(where: { $0.id == itemId }) {
-                            dataStore.updateHistoryItemOutput(item, output: output)
-                            // Refresh currentHistoryItem to get the updated version
-                            currentHistoryItem = dataStore.history.first(where: { $0.id == itemId })
-                        }
-                        isGenerating = false
-                        generationTask = nil
+                        updateRequest(id: requestId, status: .completed, output: output)
+                        dataStore.updateHistoryOutput(id: requestId, output: output)
                     }
                 }
             } catch {
                 if !Task.isCancelled {
                     await MainActor.run {
-                        generationError = error.localizedDescription
-                        showingErrorAlert = true
-                        isGenerating = false
-                        generationTask = nil
+                        updateRequest(id: requestId, status: .failed, error: error.localizedDescription)
                     }
                 }
+            }
+            _ = await MainActor.run {
+                generationTasks.removeValue(forKey: requestId)
+            }
+        }
+
+        generationTasks[requestId] = task
+    }
+
+    private func updateRequest(id: UUID, status: GenerationStatus, output: String? = nil, error: String? = nil) {
+        if let index = activeRequests.firstIndex(where: { $0.id == id }) {
+            activeRequests[index].status = status
+            if let output = output {
+                activeRequests[index].output = output
+            }
+            if let error = error {
+                activeRequests[index].error = error
             }
         }
     }
 
-    private func cancelGeneration() {
-        generationTask?.cancel()
-        generationTask = nil
-        isGenerating = false
+    private func cancelRequest(id: UUID) {
+        generationTasks[id]?.cancel()
+        generationTasks.removeValue(forKey: id)
+        updateRequest(id: id, status: .cancelled)
+    }
+}
+
+// MARK: - Active Requests Bar
+
+struct ActiveRequestsBar: View {
+    let requests: [GenerationRequest]
+    let selectedId: UUID?
+    let onSelect: (UUID) -> Void
+    let onCancel: (UUID) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.spacingS) {
+                ForEach(requests) { request in
+                    RequestChip(
+                        request: request,
+                        isSelected: request.id == selectedId,
+                        onSelect: { onSelect(request.id) },
+                        onCancel: { onCancel(request.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+struct RequestChip: View {
+    let request: GenerationRequest
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onCancel: () -> Void
+
+    @State private var isHovered = false
+
+    private var statusColor: Color {
+        switch request.status {
+        case .pending, .generating:
+            return Theme.accent
+        case .completed:
+            return Theme.success
+        case .failed:
+            return Theme.error
+        case .cancelled:
+            return Theme.textTertiary
+        }
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: Theme.spacingXS) {
+                // Status indicator
+                Group {
+                    if request.status == .generating || request.status == .pending {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(Theme.accent)
+                    } else {
+                        Circle()
+                            .fill(statusColor)
+                            .frame(width: 6, height: 6)
+                    }
+                }
+
+                Text(request.promptPreview)
+                    .font(Theme.captionFont())
+                    .foregroundColor(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                    .lineLimit(1)
+
+                // Cancel button for active requests
+                if request.status == .generating || request.status == .pending {
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(Theme.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.spacingM)
+            .padding(.vertical, Theme.spacingS)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.radiusS)
+                    .fill(isSelected ? Theme.elevated : Theme.card)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radiusS)
+                    .stroke(isSelected ? Theme.accent.opacity(0.6) : Theme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - Request Output View
+
+struct RequestOutputView: View {
+    let request: GenerationRequest
+    let onCancel: () -> Void
+
+    var body: some View {
+        switch request.status {
+        case .pending, .generating:
+            GeneratingView(onCancel: onCancel)
+        case .completed:
+            if let output = request.output {
+                MarkdownOutputView(content: output)
+            }
+        case .failed:
+            FailedView(error: request.error ?? "Unknown error")
+        case .cancelled:
+            CancelledView()
+        }
+    }
+}
+
+struct FailedView: View {
+    let error: String
+
+    var body: some View {
+        VStack(spacing: Theme.spacingM) {
+            Spacer()
+
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 32))
+                .foregroundColor(Theme.error)
+
+            Text("Generation Failed")
+                .font(Theme.headlineFont())
+                .foregroundColor(Theme.textPrimary)
+
+            Text(error)
+                .font(Theme.bodyFont())
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(Theme.spacingXL)
+        .themedCard()
+    }
+}
+
+struct CancelledView: View {
+    var body: some View {
+        VStack(spacing: Theme.spacingM) {
+            Spacer()
+
+            Image(systemName: "xmark.circle")
+                .font(.system(size: 32))
+                .foregroundColor(Theme.textTertiary)
+
+            Text("Generation Cancelled")
+                .font(Theme.headlineFont())
+                .foregroundColor(Theme.textSecondary)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(Theme.spacingXL)
+        .themedCard()
     }
 }
 
@@ -346,6 +528,10 @@ struct MarkdownOutputView: View {
 
     @State private var isCopied = false
 
+    private var attributedContent: AttributedString {
+        (try? AttributedString(markdown: content)) ?? AttributedString(content)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
             // Header
@@ -368,12 +554,14 @@ struct MarkdownOutputView: View {
                 .help("Copy to clipboard")
             }
 
-            // Content - MarkdownUI for proper rendering
+            // Content - expands to fill available space
             ScrollView {
-                Markdown(content)
-                    .markdownTheme(.royalVelvet)
-                    .textSelection(.enabled)
+                Text(attributedContent)
+                    .font(Theme.bodyFont(14))
+                    .foregroundColor(Theme.textPrimary)
+                    .lineSpacing(5)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(Theme.spacingM)
@@ -405,92 +593,6 @@ struct MarkdownOutputView: View {
             isCopied = false
         }
     }
-}
-
-// MARK: - Custom Markdown Theme
-
-extension MarkdownUI.Theme {
-    static let royalVelvet = MarkdownUI.Theme()
-        .text {
-            ForegroundColor(Theme.textPrimary)
-            FontSize(14)
-        }
-        .code {
-            FontFamilyVariant(.monospaced)
-            FontSize(13)
-            ForegroundColor(Theme.accentLight)
-            BackgroundColor(Theme.card)
-        }
-        .strong {
-            FontWeight(.semibold)
-        }
-        .emphasis {
-            FontStyle(.italic)
-        }
-        .link {
-            ForegroundColor(Theme.accent)
-        }
-        .codeBlock { configuration in
-            configuration.label
-                .markdownTextStyle {
-                    FontFamilyVariant(.monospaced)
-                    FontSize(13)
-                    ForegroundColor(Theme.textPrimary)
-                }
-                .padding(Theme.spacingM)
-                .background(Theme.card)
-                .cornerRadius(Theme.radiusS)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.radiusS)
-                        .stroke(Theme.border, lineWidth: 1)
-                )
-                .markdownMargin(top: 8, bottom: 8)
-        }
-        .heading1 { configuration in
-            configuration.label
-                .markdownTextStyle {
-                    FontWeight(.bold)
-                    FontSize(20)
-                    ForegroundColor(Theme.textPrimary)
-                }
-                .markdownMargin(top: 16, bottom: 8)
-        }
-        .heading2 { configuration in
-            configuration.label
-                .markdownTextStyle {
-                    FontWeight(.semibold)
-                    FontSize(17)
-                    ForegroundColor(Theme.textPrimary)
-                }
-                .markdownMargin(top: 12, bottom: 6)
-        }
-        .heading3 { configuration in
-            configuration.label
-                .markdownTextStyle {
-                    FontWeight(.semibold)
-                    FontSize(15)
-                    ForegroundColor(Theme.textPrimary)
-                }
-                .markdownMargin(top: 10, bottom: 4)
-        }
-        .paragraph { configuration in
-            configuration.label
-                .markdownMargin(top: 0, bottom: 12)
-        }
-        .listItem { configuration in
-            configuration.label
-                .markdownMargin(top: 4, bottom: 4)
-        }
-        .blockquote { configuration in
-            configuration.label
-                .padding(.leading, Theme.spacingM)
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(Theme.accent.opacity(0.5))
-                        .frame(width: 3)
-                }
-                .markdownMargin(top: 8, bottom: 8)
-        }
 }
 
 // MARK: - Bottom Toolbar
