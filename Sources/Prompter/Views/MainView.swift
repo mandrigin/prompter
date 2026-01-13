@@ -49,35 +49,33 @@ struct MainView: View {
                 // Draggable title area
                 WindowDragArea()
 
-                // Main content with generous spacing
-                VStack(spacing: Theme.spacingL) {
-                    // Template picker
-                    TemplatePicker(
-                        templates: dataStore.sortedTemplates,
-                        onSelect: { template in
-                            promptText = template.content
+                // Global scrollable content area
+                ScrollView {
+                    VStack(spacing: Theme.spacingL) {
+                        // Template picker
+                        TemplatePicker(
+                            templates: dataStore.sortedTemplates,
+                            onSelect: { template in
+                                promptText = template.content
+                            }
+                        )
+
+                        // Prompt input with auto-resize
+                        AutoResizingPromptInput(
+                            text: $promptText,
+                            isGenerating: isGenerating,
+                            onSubmit: submitPrompt
+                        )
+
+                        // Generated output display
+                        if isGenerating {
+                            GeneratingView(onCancel: cancelGeneration)
+                        } else if let output = displayedOutput {
+                            MarkdownOutputView(content: output)
                         }
-                    )
-
-                    // Prompt input
-                    PromptInputField(
-                        text: $promptText,
-                        isGenerating: isGenerating,
-                        onSubmit: submitPrompt
-                    )
-
-                    // Generated output display - fills remaining space
-                    if isGenerating {
-                        GeneratingView(onCancel: cancelGeneration)
-                            .frame(maxHeight: .infinity)
-                    } else if let output = displayedOutput {
-                        MarkdownOutputView(content: output)
-                            .frame(maxHeight: .infinity)
-                    } else {
-                        Spacer()
                     }
+                    .padding(Theme.spacingXL)
                 }
-                .padding(Theme.spacingXL)
 
                 // Bottom toolbar
                 BottomToolbar(showingHistory: $showingHistory)
@@ -251,28 +249,55 @@ struct TemplateChip: View {
     }
 }
 
-// MARK: - Prompt Input Field
+// MARK: - Auto-Resizing Prompt Input
 
-struct PromptInputField: View {
+struct AutoResizingPromptInput: View {
     @Binding var text: String
     var isGenerating: Bool = false
     let onSubmit: () -> Void
 
     @FocusState private var isFocused: Bool
+    @State private var textHeight: CGFloat = 60
+
+    private let minHeight: CGFloat = 60
+    private let maxHeight: CGFloat = 300
+    private let lineHeight: CGFloat = 22
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
-            // Text input with Things-like clean styling
-            TextEditor(text: $text)
-                .font(Theme.bodyFont(14))
-                .foregroundColor(Theme.textPrimary)
-                .lineSpacing(4)
-                .frame(minHeight: 100, maxHeight: 180)
-                .scrollContentBackground(.hidden)
-                .padding(Theme.spacingM)
-                .themedInput(isFocused: isFocused)
-                .focused($isFocused)
-                .disabled(isGenerating)
+            // Auto-resizing text input
+            ZStack(alignment: .topLeading) {
+                // Hidden text for measuring
+                Text(text.isEmpty ? " " : text)
+                    .font(Theme.bodyFont(14))
+                    .lineSpacing(4)
+                    .padding(Theme.spacingM)
+                    .opacity(0)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: TextHeightKey.self,
+                                value: geo.size.height
+                            )
+                        }
+                    )
+
+                // Actual text editor
+                TextEditor(text: $text)
+                    .font(Theme.bodyFont(14))
+                    .foregroundColor(Theme.textPrimary)
+                    .lineSpacing(4)
+                    .scrollContentBackground(.hidden)
+                    .scrollDisabled(true)
+                    .padding(Theme.spacingM)
+                    .focused($isFocused)
+                    .disabled(isGenerating)
+            }
+            .frame(height: max(minHeight, min(textHeight, maxHeight)))
+            .themedInput(isFocused: isFocused)
+            .onPreferenceChange(TextHeightKey.self) { height in
+                textHeight = height
+            }
 
             // Bottom row with hint and button
             HStack(alignment: .center) {
@@ -304,6 +329,13 @@ struct PromptInputField: View {
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
+    }
+}
+
+private struct TextHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 60
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -368,23 +400,20 @@ struct MarkdownOutputView: View {
                 .help("Copy to clipboard")
             }
 
-            // Content - MarkdownUI for proper rendering
-            ScrollView {
-                Markdown(content)
-                    .markdownTheme(.royalVelvet)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(Theme.spacingM)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.radiusM)
-                    .fill(Theme.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.radiusM)
-                    .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
-            )
+            // Content - MarkdownUI (no scroll - parent handles scrolling)
+            Markdown(content)
+                .markdownTheme(.royalVelvet)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.spacingM)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.radiusM)
+                        .fill(Theme.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radiusM)
+                        .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
+                )
         }
         .padding(Theme.spacingL)
         .background(
