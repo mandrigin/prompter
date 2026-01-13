@@ -30,8 +30,14 @@ struct MainView: View {
             if showingHistory {
                 HistorySidebar(
                     history: dataStore.history,
+                    activeRequestIds: Set(activeRequests.map { $0.id }),
                     onSelect: { item in
-                        promptText = item.prompt
+                        // If there's an active request for this item, select it to resume viewing
+                        if activeRequests.contains(where: { $0.id == item.id }) {
+                            selectedRequestId = item.id
+                        } else {
+                            promptText = item.prompt
+                        }
                     },
                     onDelete: { item in
                         dataStore.deleteHistoryItem(item)
@@ -112,8 +118,8 @@ struct MainView: View {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
-        // Create history item
-        let historyItem = PromptHistory(prompt: trimmedPrompt)
+        // Create history item with generating status
+        let historyItem = PromptHistory(prompt: trimmedPrompt, generationStatus: .generating)
         dataStore.addHistoryItem(historyItem)
 
         // Create generation request
@@ -143,12 +149,14 @@ struct MainView: View {
                     await MainActor.run {
                         updateRequest(id: requestId, status: .completed, output: output)
                         dataStore.updateHistoryOutput(id: requestId, output: output)
+                        dataStore.updateHistoryStatus(id: requestId, status: .completed)
                     }
                 }
             } catch {
                 if !Task.isCancelled {
                     await MainActor.run {
                         updateRequest(id: requestId, status: .failed, error: error.localizedDescription)
+                        dataStore.updateHistoryStatus(id: requestId, status: .failed, error: error.localizedDescription)
                     }
                 }
             }
@@ -176,6 +184,7 @@ struct MainView: View {
         generationTasks[id]?.cancel()
         generationTasks.removeValue(forKey: id)
         updateRequest(id: id, status: .cancelled)
+        dataStore.updateHistoryStatus(id: id, status: .cancelled)
     }
 }
 

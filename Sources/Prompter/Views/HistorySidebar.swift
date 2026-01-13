@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistorySidebar: View {
     let history: [PromptHistory]
+    let activeRequestIds: Set<UUID>
     let onSelect: (PromptHistory) -> Void
     let onDelete: (PromptHistory) -> Void
     let onArchive: (PromptHistory) -> Void
@@ -82,6 +83,7 @@ struct HistorySidebar: View {
                                 ForEach(items) { item in
                                     HistoryRow(
                                         item: item,
+                                        isActivelyGenerating: activeRequestIds.contains(item.id),
                                         onSelect: onSelect,
                                         onDelete: onDelete,
                                         onArchive: onArchive,
@@ -97,6 +99,7 @@ struct HistorySidebar: View {
                                     ForEach(archivedHistory) { item in
                                         HistoryRow(
                                             item: item,
+                                            isActivelyGenerating: activeRequestIds.contains(item.id),
                                             onSelect: onSelect,
                                             onDelete: onDelete,
                                             onArchive: onArchive,
@@ -122,6 +125,7 @@ struct HistorySidebar: View {
                         ForEach(items) { item in
                             HistoryRow(
                                 item: item,
+                                isActivelyGenerating: activeRequestIds.contains(item.id),
                                 onSelect: onSelect,
                                 onDelete: onDelete,
                                 onArchive: onArchive,
@@ -190,6 +194,7 @@ struct HistorySidebar: View {
 
 struct HistoryRow: View {
     let item: PromptHistory
+    let isActivelyGenerating: Bool
     let onSelect: (PromptHistory) -> Void
     let onDelete: (PromptHistory) -> Void
     let onArchive: (PromptHistory) -> Void
@@ -197,8 +202,42 @@ struct HistoryRow: View {
 
     @State private var isHovered = false
 
+    private var statusColor: Color {
+        if isActivelyGenerating {
+            return Theme.accent
+        }
+        switch item.generationStatus {
+        case .completed:
+            return Theme.success
+        case .failed:
+            return Theme.error
+        case .cancelled:
+            return Theme.textTertiary
+        case .generating, .pending:
+            return Theme.accent
+        case .none:
+            // Legacy items without status - check if they have output
+            return item.hasResult ? Theme.success : Theme.textTertiary
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: Theme.spacingS) {
+            // Status indicator
+            Group {
+                if isActivelyGenerating {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(Theme.accent)
+                } else {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .frame(width: 12, height: 12)
+            .padding(.top, 3)
+
             VStack(alignment: .leading, spacing: Theme.spacingXS) {
                 HStack(spacing: Theme.spacingXS) {
                     Text(item.prompt)
