@@ -54,14 +54,17 @@ struct MainView: View {
 
                     // Generated variants display
                     if isGenerating {
-                        HStack {
+                        VStack(spacing: 8) {
                             ProgressView()
-                                .controlSize(.small)
+                                .controlSize(.regular)
                             Text("Generating variants...")
                                 .font(.system(size: 12))
                                 .foregroundColor(.secondary)
                         }
-                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                        .cornerRadius(8)
                     } else if let error = generationError {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -72,6 +75,7 @@ struct MainView: View {
                         }
                         .padding(.vertical, 8)
                     } else if let variants = generatedVariants {
+                        OutputView(variants: variants, selectedMode: selectedMode)
                         VariantsView(variants: variants, selectedMode: $selectedMode)
                     }
                 }
@@ -354,6 +358,90 @@ struct VariantCard: View {
     private func copyToClipboard() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(content, forType: .string)
+        isCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            isCopied = false
+        }
+    }
+}
+
+struct OutputView: View {
+    let variants: PromptVariants
+    let selectedMode: PromptMode
+
+    @State private var isCopied = false
+
+    private var currentVariant: String {
+        switch selectedMode {
+        case .primary:
+            return variants.primary
+        case .strict:
+            return variants.strict
+        case .exploratory:
+            return variants.exploratory
+        }
+    }
+
+    private var modeColor: Color {
+        switch selectedMode {
+        case .primary:
+            return .blue
+        case .strict:
+            return .orange
+        case .exploratory:
+            return .purple
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Circle()
+                    .fill(modeColor)
+                    .frame(width: 10, height: 10)
+
+                Text("\(selectedMode.rawValue) Output")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Button(action: copyToClipboard) {
+                    HStack(spacing: 4) {
+                        Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                        Text(isCopied ? "Copied!" : "Copy")
+                    }
+                    .font(.system(size: 11))
+                    .foregroundColor(isCopied ? .green : .accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Copy to clipboard")
+            }
+
+            ScrollView {
+                Text(currentVariant)
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(minHeight: 60, maxHeight: 120)
+            .padding(10)
+            .background(Color(NSColor.textBackgroundColor))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(modeColor.opacity(0.5), lineWidth: 2)
+            )
+        }
+        .padding(12)
+        .background(modeColor.opacity(0.05))
+        .cornerRadius(10)
+    }
+
+    private func copyToClipboard() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(currentVariant, forType: .string)
         isCopied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             isCopied = false
