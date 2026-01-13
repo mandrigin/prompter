@@ -9,6 +9,7 @@ struct MainView: View {
     @State private var isGenerating: Bool = false
     @State private var generatedVariants: PromptVariants? = nil
     @State private var generationError: String? = nil
+    @State private var showingErrorAlert: Bool = false
 
     private let promptService = PromptService()
 
@@ -62,15 +63,6 @@ struct MainView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 8)
-                    } else if let error = generationError {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                            Text(error)
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 8)
                     } else if let variants = generatedVariants {
                         VariantsView(variants: variants, selectedMode: $selectedMode)
                     }
@@ -84,6 +76,13 @@ struct MainView: View {
             }
         }
         .frame(minWidth: 400, minHeight: 300)
+        .alert("Generation Failed", isPresented: $showingErrorAlert) {
+            Button("Dismiss", role: .cancel) {
+                generationError = nil
+            }
+        } message: {
+            Text(generationError ?? "An unknown error occurred")
+        }
     }
 
     private func submitPrompt() {
@@ -111,6 +110,7 @@ struct MainView: View {
             } catch {
                 await MainActor.run {
                     generationError = error.localizedDescription
+                    showingErrorAlert = true
                     isGenerating = false
                 }
             }
