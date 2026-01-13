@@ -14,7 +14,6 @@ struct MainView: View {
     @State private var promptText: String = ""
     @State private var showingHistory: Bool = true
     @State private var selectedItemId: UUID? = nil
-    @State private var selectedVersionIndex: Int = 0
     @State private var generationTask: Task<Void, Never>? = nil
     @State private var showingErrorAlert: Bool = false
     @State private var errorMessage: String? = nil
@@ -97,11 +96,8 @@ struct MainView: View {
                         } else if let item = selectedItem {
                             switch item.generationStatus {
                             case .completed:
-                                if !item.versions.isEmpty {
-                                    MarkdownOutputView(
-                                        versions: item.versions,
-                                        selectedVersionIndex: $selectedVersionIndex
-                                    )
+                                if let output = item.generatedOutput {
+                                    MarkdownOutputView(content: output)
                                 }
                             case .failed:
                                 FailedGenerationView(
@@ -139,8 +135,6 @@ struct MainView: View {
         // Select the item - don't cancel generation, allow viewing it
         selectedItemId = item.id
         promptText = item.prompt
-        // Show the latest version by default
-        selectedVersionIndex = max(0, item.versions.count - 1)
     }
 
     private func createNewPrompt() {
@@ -192,10 +186,6 @@ struct MainView: View {
                 if !Task.isCancelled {
                     await MainActor.run {
                         dataStore.completeGeneration(id: itemId, output: output)
-                        // Show the latest version after generation
-                        if let item = dataStore.historyItem(byId: itemId) {
-                            selectedVersionIndex = max(0, item.versions.count - 1)
-                        }
                         generationTask = nil
                     }
                 }
@@ -230,10 +220,6 @@ struct MainView: View {
                 if !Task.isCancelled {
                     await MainActor.run {
                         dataStore.completeGeneration(id: itemId, output: output)
-                        // Show the latest version after generation
-                        if let item = dataStore.historyItem(byId: itemId) {
-                            selectedVersionIndex = max(0, item.versions.count - 1)
-                        }
                         generationTask = nil
                     }
                 }
@@ -411,6 +397,7 @@ struct AutoResizingPromptInput: View {
 
     @FocusState private var isFocused: Bool
     @State private var textHeight: CGFloat = 60
+    @State private var containerWidth: CGFloat = 0
 
     private let minHeight: CGFloat = 60
     private let maxHeight: CGFloat = 200
@@ -423,16 +410,13 @@ struct AutoResizingPromptInput: View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
             // Auto-resizing text input
             ZStack(alignment: .topLeading) {
-                // Hidden text for measuring - add trailing newline to match TextEditor cursor space
-                // TextEditor has ~10pt extra internal padding vs Text
-                Text(text.isEmpty ? " " : text + "\n")
+                // Hidden text for measuring - needs concrete width for proper wrapping
+                Text(text.isEmpty ? " " : text)
                     .font(Theme.bodyFont(14))
                     .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
                     .padding(Theme.spacingM)
-                    .padding(.vertical, 5) // Account for TextEditor internal padding
-                    .opacity(0)
+                    .frame(width: containerWidth > 0 ? containerWidth : nil, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .background(
                         GeometryReader { geo in
                             Color.clear.preference(
@@ -441,7 +425,7 @@ struct AutoResizingPromptInput: View {
                             )
                         }
                     )
-                    .id(text) // Force re-measurement on text change
+                    .opacity(0)
 
                 // Actual text editor
                 TextEditor(text: $text)
@@ -455,6 +439,16 @@ struct AutoResizingPromptInput: View {
                     .disabled(isGenerating)
             }
             .frame(height: max(minHeight, min(textHeight, maxHeight)))
+            .frame(maxWidth: .infinity)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { containerWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { _, newWidth in
+                            containerWidth = newWidth
+                        }
+                }
+            )
             .themedInput(isFocused: isFocused)
             .onPreferenceChange(TextHeightKey.self) { height in
                 withAnimation(.easeOut(duration: 0.1)) {
@@ -615,47 +609,19 @@ struct FailedGenerationView: View {
 // MARK: - Markdown Output View
 
 struct MarkdownOutputView: View {
-    let versions: [PromptVersion]
-    @Binding var selectedVersionIndex: Int
+    let content: String
 
     @State private var isCopied = false
 
-    private var currentVersion: PromptVersion? {
-        guard selectedVersionIndex >= 0, selectedVersionIndex < versions.count else { return nil }
-        return versions[selectedVersionIndex]
-    }
-
-    private var content: String {
-        currentVersion?.output ?? ""
-    }
-
-    private var hasMultipleVersions: Bool {
-        versions.count > 1
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
-            // Header with version selector
-            HStack(alignment: .center) {
+            // Header
+            HStack {
                 Text("Generated Prompt")
                     .font(Theme.headlineFont())
                     .foregroundColor(Theme.textPrimary)
 
-                if hasMultipleVersions {
-                    VersionSelector(
-                        versions: versions,
-                        selectedIndex: $selectedVersionIndex
-                    )
-                }
-
                 Spacer()
-
-                // Timestamp for current version
-                if let version = currentVersion {
-                    Text(formatTimestamp(version.timestamp))
-                        .font(Theme.captionFont())
-                        .foregroundColor(Theme.textTertiary)
-                }
 
                 Button(action: copyToClipboard) {
                     HStack(spacing: Theme.spacingXS) {
@@ -702,63 +668,6 @@ struct MarkdownOutputView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             isCopied = false
         }
-    }
-
-    private func formatTimestamp(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-}
-
-// MARK: - Version Selector
-
-struct VersionSelector: View {
-    let versions: [PromptVersion]
-    @Binding var selectedIndex: Int
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(Array(versions.enumerated()), id: \.element.id) { index, _ in
-                VersionTab(
-                    index: index,
-                    isSelected: index == selectedIndex,
-                    onSelect: { selectedIndex = index }
-                )
-            }
-        }
-        .padding(2)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.radiusS)
-                .fill(Theme.surface.opacity(0.5))
-        )
-    }
-}
-
-struct VersionTab: View {
-    let index: Int
-    let isSelected: Bool
-    let onSelect: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            Text("v\(index)")
-                .font(Theme.captionFont(11))
-                .fontWeight(isSelected ? .semibold : .regular)
-                .foregroundColor(isSelected ? .white : Theme.textSecondary)
-                .padding(.horizontal, Theme.spacingS)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.radiusS - 2)
-                        .fill(isSelected ? Theme.accent : (isHovered ? Theme.surface : Color.clear))
-                )
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .help("Version \(index)")
     }
 }
 
