@@ -42,6 +42,13 @@ class DataStore: ObservableObject {
         }
     }
 
+    func updateHistoryItemOutput(_ item: PromptHistory, output: String) {
+        if let index = history.firstIndex(where: { $0.id == item.id }) {
+            history[index].generatedOutput = output
+            saveHistory()
+        }
+    }
+
     func clearHistory() {
         history.removeAll()
         saveHistory()

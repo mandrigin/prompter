@@ -7,12 +7,17 @@ struct MainView: View {
     @State private var promptText: String = ""
     @State private var showingHistory: Bool = true
     @State private var isGenerating: Bool = false
-    @State private var generatedPrompt: String? = nil
+    @State private var currentHistoryItem: PromptHistory? = nil
     @State private var generationError: String? = nil
     @State private var generationTask: Task<Void, Never>? = nil
     @State private var showingErrorAlert: Bool = false
 
     private let promptService = PromptService()
+
+    /// The output to display - either from current history item or nothing
+    private var displayedOutput: String? {
+        currentHistoryItem?.generatedOutput
+    }
 
     var body: some View {
         HSplitView {
@@ -20,9 +25,12 @@ struct MainView: View {
                 HistorySidebar(
                     history: dataStore.history,
                     onSelect: { item in
-                        promptText = item.prompt
+                        selectHistoryItem(item)
                     },
                     onDelete: { item in
+                        if currentHistoryItem?.id == item.id {
+                            currentHistoryItem = nil
+                        }
                         dataStore.deleteHistoryItem(item)
                     },
                     onArchive: { item in
@@ -61,7 +69,7 @@ struct MainView: View {
                     if isGenerating {
                         GeneratingView(onCancel: cancelGeneration)
                             .frame(maxHeight: .infinity)
-                    } else if let output = generatedPrompt {
+                    } else if let output = displayedOutput {
                         MarkdownOutputView(content: output)
                             .frame(maxHeight: .infinity)
                     } else {
@@ -85,19 +93,32 @@ struct MainView: View {
         }
     }
 
+    private func selectHistoryItem(_ item: PromptHistory) {
+        // Cancel any ongoing generation
+        if isGenerating {
+            cancelGeneration()
+        }
+
+        // Set the prompt text and current item
+        promptText = item.prompt
+        currentHistoryItem = item
+    }
+
     private func submitPrompt() {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
+        // Create new history item and set it as current
         let historyItem = PromptHistory(prompt: trimmedPrompt)
         dataStore.addHistoryItem(historyItem)
+        currentHistoryItem = historyItem
 
-        generatedPrompt = nil
         generationError = nil
         isGenerating = true
 
         let inputPrompt = trimmedPrompt
         let currentSystemPrompt = systemPrompt
+        let itemId = historyItem.id
         promptText = ""
 
         generationTask = Task {
@@ -108,7 +129,12 @@ struct MainView: View {
                 )
                 if !Task.isCancelled {
                     await MainActor.run {
-                        generatedPrompt = output
+                        // Update the history item with the generated output
+                        if let item = dataStore.history.first(where: { $0.id == itemId }) {
+                            dataStore.updateHistoryItemOutput(item, output: output)
+                            // Refresh currentHistoryItem to get the updated version
+                            currentHistoryItem = dataStore.history.first(where: { $0.id == itemId })
+                        }
                         isGenerating = false
                         generationTask = nil
                     }
