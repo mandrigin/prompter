@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistorySidebar: View {
     let history: [PromptHistory]
+    let activeRequestIds: Set<UUID>
     let onSelect: (PromptHistory) -> Void
     let onDelete: (PromptHistory) -> Void
     let onArchive: (PromptHistory) -> Void
@@ -82,6 +83,7 @@ struct HistorySidebar: View {
                                 ForEach(items) { item in
                                     HistoryRow(
                                         item: item,
+                                        isActivelyGenerating: activeRequestIds.contains(item.id),
                                         onSelect: onSelect,
                                         onDelete: onDelete,
                                         onArchive: onArchive,
@@ -97,6 +99,7 @@ struct HistorySidebar: View {
                                     ForEach(archivedHistory) { item in
                                         HistoryRow(
                                             item: item,
+                                            isActivelyGenerating: activeRequestIds.contains(item.id),
                                             onSelect: onSelect,
                                             onDelete: onDelete,
                                             onArchive: onArchive,
@@ -122,6 +125,7 @@ struct HistorySidebar: View {
                         ForEach(items) { item in
                             HistoryRow(
                                 item: item,
+                                isActivelyGenerating: activeRequestIds.contains(item.id),
                                 onSelect: onSelect,
                                 onDelete: onDelete,
                                 onArchive: onArchive,
@@ -190,6 +194,7 @@ struct HistorySidebar: View {
 
 struct HistoryRow: View {
     let item: PromptHistory
+    let isActivelyGenerating: Bool
     let onSelect: (PromptHistory) -> Void
     let onDelete: (PromptHistory) -> Void
     let onArchive: (PromptHistory) -> Void
@@ -197,33 +202,41 @@ struct HistoryRow: View {
 
     @State private var isHovered = false
 
-    private var statusIndicator: some View {
-        Group {
-            switch item.generationStatus {
-            case .pending:
-                // No indicator for pending
-                EmptyView()
-            case .generating:
-                ProgressView()
-                    .controlSize(.mini)
-                    .scaleEffect(0.7)
-            case .completed:
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 10))
-                    .foregroundColor(Theme.success)
-            case .failed:
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 10))
-                    .foregroundColor(Theme.error)
-            }
+    private var statusColor: Color {
+        if isActivelyGenerating {
+            return Theme.accent
+        }
+        switch item.generationStatus {
+        case .completed:
+            return Theme.success
+        case .failed:
+            return Theme.error
+        case .cancelled:
+            return Theme.textTertiary
+        case .generating, .pending:
+            return Theme.accent
+        case .none:
+            // Legacy items without status - check if they have output
+            return item.hasResult ? Theme.success : Theme.textTertiary
         }
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.spacingS) {
             // Status indicator
-            statusIndicator
-                .frame(width: 14)
+            Group {
+                if isActivelyGenerating {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(Theme.accent)
+                } else {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .frame(width: 12, height: 12)
+            .padding(.top, 3)
 
             VStack(alignment: .leading, spacing: Theme.spacingXS) {
                 HStack(spacing: Theme.spacingXS) {
@@ -240,24 +253,9 @@ struct HistoryRow: View {
                     }
                 }
 
-                HStack(spacing: Theme.spacingXS) {
-                    Text(formatDate(item.timestamp))
-                        .font(Theme.captionFont(10))
-                        .foregroundColor(Theme.textTertiary)
-
-                    // Version count badge
-                    if item.versionCount > 1 {
-                        Text("\(item.versionCount) versions")
-                            .font(Theme.captionFont(9))
-                            .foregroundColor(Theme.accent)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Theme.accent.opacity(0.15))
-                            )
-                    }
-                }
+                Text(formatDate(item.timestamp))
+                    .font(Theme.captionFont(10))
+                    .foregroundColor(Theme.textTertiary)
             }
 
             Spacer()
