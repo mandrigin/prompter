@@ -36,7 +36,24 @@ class DataStore: ObservableObject {
 
     func updateHistoryOutput(id: UUID, output: String) {
         if let index = history.firstIndex(where: { $0.id == id }) {
-            history[index].generatedOutput = output
+            history[index].addVersion(output: output)
+            saveHistory()
+        }
+    }
+
+    /// Find existing history item with the same prompt text
+    func findExistingPrompt(_ promptText: String) -> PromptHistory? {
+        let normalizedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return history.first { $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedPrompt }
+    }
+
+    /// Add a new version to an existing history item
+    func addVersionToHistory(id: UUID, output: String) {
+        if let index = history.firstIndex(where: { $0.id == id }) {
+            history[index].addVersion(output: output)
+            // Move to top of history
+            let item = history.remove(at: index)
+            history.insert(item, at: 0)
             saveHistory()
         }
     }
@@ -57,7 +74,7 @@ class DataStore: ObservableObject {
 
     func updateHistoryItemOutput(_ item: PromptHistory, output: String) {
         if let index = history.firstIndex(where: { $0.id == item.id }) {
-            history[index].generatedOutput = output
+            history[index].addVersion(output: output)
             saveHistory()
         }
     }

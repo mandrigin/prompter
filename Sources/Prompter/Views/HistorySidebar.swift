@@ -240,9 +240,24 @@ struct HistoryRow: View {
                     }
                 }
 
-                Text(formatDate(item.timestamp))
-                    .font(Theme.captionFont(10))
-                    .foregroundColor(Theme.textTertiary)
+                HStack(spacing: Theme.spacingXS) {
+                    Text(formatDate(item.timestamp))
+                        .font(Theme.captionFont(10))
+                        .foregroundColor(Theme.textTertiary)
+
+                    // Version count badge
+                    if item.versionCount > 1 {
+                        Text("\(item.versionCount) versions")
+                            .font(Theme.captionFont(9))
+                            .foregroundColor(Theme.accent)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Theme.accent.opacity(0.15))
+                            )
+                    }
+                }
             }
 
             Spacer()
