@@ -50,6 +50,10 @@ struct MainView: View {
                     },
                     onUnarchive: { item in
                         dataStore.unarchiveHistoryItem(item)
+                    },
+                    onCreate: {
+                        promptText = ""
+                        selectedItemId = nil
                     }
                 )
                 .frame(minWidth: 180, maxWidth: 240)

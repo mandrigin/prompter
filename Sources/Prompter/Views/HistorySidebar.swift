@@ -6,6 +6,7 @@ struct HistorySidebar: View {
     let onDelete: (PromptHistory) -> Void
     let onArchive: (PromptHistory) -> Void
     let onUnarchive: (PromptHistory) -> Void
+    let onCreate: () -> Void
 
     @State private var searchText: String = ""
     @State private var showArchived: Bool = false
@@ -47,6 +48,30 @@ struct HistorySidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // New Prompt button
+            Button(action: onCreate) {
+                HStack(spacing: Theme.spacingS) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("New Prompt")
+                        .font(Theme.headlineFont(13))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.spacingS)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.radiusS)
+                        .fill(Theme.accent)
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, Theme.spacingM)
+            .padding(.vertical, Theme.spacingM)
+
+            Rectangle()
+                .fill(Theme.separator)
+                .frame(height: 1)
+
             // Search field with Opera-like clean styling
             HStack(spacing: Theme.spacingS) {
                 Image(systemName: "magnifyingglass")
