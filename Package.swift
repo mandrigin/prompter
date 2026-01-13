@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "Prompter",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(name: "Prompter", targets: ["Prompter"])
