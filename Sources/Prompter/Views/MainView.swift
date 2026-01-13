@@ -435,26 +435,57 @@ struct TemplateChip: View {
 
 // MARK: - Prompt Input Field
 
+private struct TextHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 60
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct PromptInputField: View {
     @Binding var text: String
     var isGenerating: Bool = false
     let onSubmit: () -> Void
 
     @FocusState private var isFocused: Bool
+    @State private var textHeight: CGFloat = 60
+
+    private let minHeight: CGFloat = 60
+    private let maxHeight: CGFloat = 200
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
             // Text input with Things-like clean styling
-            TextEditor(text: $text)
-                .font(Theme.bodyFont(14))
-                .foregroundColor(Theme.textPrimary)
-                .lineSpacing(4)
-                .frame(minHeight: 100, maxHeight: 180)
-                .scrollContentBackground(.hidden)
-                .padding(Theme.spacingM)
-                .themedInput(isFocused: isFocused)
-                .focused($isFocused)
-                .disabled(isGenerating)
+            ZStack(alignment: .topLeading) {
+                // Hidden text view to calculate height
+                Text(text.isEmpty ? " " : text)
+                    .font(Theme.bodyFont(14))
+                    .lineSpacing(4)
+                    .padding(Theme.spacingM)
+                    .padding(.horizontal, 5) // Match TextEditor internal padding
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(GeometryReader { geometry in
+                        Color.clear.preference(
+                            key: TextHeightPreferenceKey.self,
+                            value: geometry.size.height
+                        )
+                    })
+                    .hidden()
+
+                TextEditor(text: $text)
+                    .font(Theme.bodyFont(14))
+                    .foregroundColor(Theme.textPrimary)
+                    .lineSpacing(4)
+                    .scrollContentBackground(.hidden)
+                    .padding(Theme.spacingM)
+                    .focused($isFocused)
+                    .disabled(isGenerating)
+            }
+            .frame(height: min(max(textHeight, minHeight), maxHeight))
+            .themedInput(isFocused: isFocused)
+            .onPreferenceChange(TextHeightPreferenceKey.self) { height in
+                textHeight = height
+            }
 
             // Bottom row with hint and button
             HStack(alignment: .center) {
