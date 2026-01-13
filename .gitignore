@@ -1,0 +1,15 @@
+# Build artifacts
+.build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+
+# Xcode
+xcuserdata/
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# Local state
+.beads/
