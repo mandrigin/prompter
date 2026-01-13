@@ -57,16 +57,18 @@ struct MainView: View {
                         onSubmit: submitPrompt
                     )
 
-                    // Generated output display
+                    // Generated output display - fills remaining space
                     if isGenerating {
                         GeneratingView(onCancel: cancelGeneration)
+                            .frame(maxHeight: .infinity)
                     } else if let output = generatedPrompt {
                         MarkdownOutputView(content: output)
+                            .frame(maxHeight: .infinity)
+                    } else {
+                        Spacer()
                     }
                 }
                 .padding(Theme.spacingXL)
-
-                Spacer()
 
                 // Bottom toolbar
                 BottomToolbar(showingHistory: $showingHistory)
@@ -343,7 +345,7 @@ struct MarkdownOutputView: View {
                 .help("Copy to clipboard")
             }
 
-            // Content
+            // Content - expands to fill available space
             ScrollView {
                 Text(attributedContent)
                     .font(Theme.bodyFont(14))
@@ -352,7 +354,7 @@ struct MarkdownOutputView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
-            .frame(minHeight: 120, maxHeight: 280)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(Theme.spacingM)
             .background(
                 RoundedRectangle(cornerRadius: Theme.radiusM)
