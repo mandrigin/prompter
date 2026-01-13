@@ -88,23 +88,38 @@ struct SettingsTabButton: View {
     }
 }
 
-/// Default system prompt used for generating improved prompts
-let defaultSystemPrompt = """
+/// Default system prompt for generating concise, focused prompts
+let defaultShortSystemPrompt = """
+You are a prompt engineering assistant. Given a user's rough idea, generate a concise, \
+focused prompt.
+
+Keep it brief:
+- One clear, actionable prompt
+- Essential context only
+- No examples unless critical
+
+Aim for clarity and brevity. The prompt should be immediately usable.
+"""
+
+/// Default system prompt for generating detailed, comprehensive prompts
+let defaultLongSystemPrompt = """
 You are a prompt engineering assistant. Given a user's rough idea or description, \
-generate an improved, well-structured prompt.
+generate a detailed, comprehensive prompt.
 
 Format your response in markdown with:
-- A clear, actionable prompt
-- Key considerations or context if relevant
-- Example usage if helpful
+- A thorough, well-structured prompt with all necessary context
+- Key considerations, constraints, and edge cases
+- Example usage demonstrating the prompt
+- Variations or alternatives if applicable
 
-Be concise but thorough. Focus on making the prompt effective for AI assistants.
+Be comprehensive. Include everything needed for the AI to fully understand the task.
 """
 
 struct GeneralSettingsView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showDockIcon") private var showDockIcon = false
-    @AppStorage("systemPrompt") private var systemPrompt = defaultSystemPrompt
+    @AppStorage("systemPromptShort") private var systemPromptShort = defaultShortSystemPrompt
+    @AppStorage("systemPromptLong") private var systemPromptLong = defaultLongSystemPrompt
 
     var body: some View {
         Form {
@@ -113,10 +128,10 @@ struct GeneralSettingsView: View {
                 Toggle("Show in Dock", isOn: $showDockIcon)
             }
 
-            Section("System Prompt") {
-                TextEditor(text: $systemPrompt)
+            Section("Short Prompt System") {
+                TextEditor(text: $systemPromptShort)
                     .font(.system(size: 11, design: .monospaced))
-                    .frame(minHeight: 120, maxHeight: .infinity)
+                    .frame(minHeight: 100, maxHeight: 150)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .background(Color(NSColor.textBackgroundColor))
@@ -127,17 +142,45 @@ struct GeneralSettingsView: View {
                     )
 
                 HStack {
-                    Text("Customize the instructions sent to Claude when generating prompts")
+                    Text("Instructions for generating concise prompts")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
 
                     Spacer()
 
-                    Button("Reset to Default") {
-                        systemPrompt = defaultSystemPrompt
+                    Button("Reset") {
+                        systemPromptShort = defaultShortSystemPrompt
                     }
                     .controlSize(.small)
-                    .disabled(systemPrompt == defaultSystemPrompt)
+                    .disabled(systemPromptShort == defaultShortSystemPrompt)
+                }
+            }
+
+            Section("Long Prompt System") {
+                TextEditor(text: $systemPromptLong)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(minHeight: 100, maxHeight: 150)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                    )
+
+                HStack {
+                    Text("Instructions for generating detailed prompts")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+
+                    Button("Reset") {
+                        systemPromptLong = defaultLongSystemPrompt
+                    }
+                    .controlSize(.small)
+                    .disabled(systemPromptLong == defaultLongSystemPrompt)
                 }
             }
 

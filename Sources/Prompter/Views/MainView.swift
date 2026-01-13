@@ -1,9 +1,15 @@
 import SwiftUI
 import MarkdownUI
 
+enum PromptLength {
+    case short
+    case long
+}
+
 struct MainView: View {
     @EnvironmentObject var dataStore: DataStore
-    @AppStorage("systemPrompt") private var systemPrompt = defaultSystemPrompt
+    @AppStorage("systemPromptShort") private var systemPromptShort = defaultShortSystemPrompt
+    @AppStorage("systemPromptLong") private var systemPromptLong = defaultLongSystemPrompt
 
     @State private var promptText: String = ""
     @State private var showingHistory: Bool = true
@@ -75,7 +81,8 @@ struct MainView: View {
                         AutoResizingPromptInput(
                             text: $promptText,
                             isGenerating: dataStore.generatingItemId != nil,
-                            onSubmit: submitPrompt
+                            onSubmitShort: { submitPrompt(length: .short) },
+                            onSubmitLong: { submitPrompt(length: .long) }
                         )
 
                         // Generated output display based on selected item state
@@ -125,7 +132,7 @@ struct MainView: View {
         promptText = item.prompt
     }
 
-    private func submitPrompt() {
+    private func submitPrompt(length: PromptLength) {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
@@ -136,7 +143,7 @@ struct MainView: View {
         selectedItemId = historyItem.id
 
         let inputPrompt = trimmedPrompt
-        let currentSystemPrompt = systemPrompt
+        let currentSystemPrompt = length == .short ? systemPromptShort : systemPromptLong
         let itemId = historyItem.id
         promptText = ""
 
@@ -170,7 +177,8 @@ struct MainView: View {
 
     private func retryGeneration(item: PromptHistory) {
         let inputPrompt = item.prompt
-        let currentSystemPrompt = systemPrompt
+        // Default to long system prompt for retries
+        let currentSystemPrompt = systemPromptLong
         let itemId = item.id
 
         // Mark as generating
@@ -306,7 +314,8 @@ struct TemplateChip: View {
 struct AutoResizingPromptInput: View {
     @Binding var text: String
     var isGenerating: Bool = false
-    let onSubmit: () -> Void
+    let onSubmitShort: () -> Void
+    let onSubmitLong: () -> Void
 
     @FocusState private var isFocused: Bool
     @State private var textHeight: CGFloat = 60
@@ -314,6 +323,10 @@ struct AutoResizingPromptInput: View {
     private let minHeight: CGFloat = 60
     private let maxHeight: CGFloat = 300
     private let lineHeight: CGFloat = 22
+
+    private var isDisabled: Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
@@ -351,7 +364,7 @@ struct AutoResizingPromptInput: View {
                 textHeight = height
             }
 
-            // Bottom row with hint and button
+            // Bottom row with hint and buttons
             HStack(alignment: .center) {
                 Text("Describe what you want to accomplish")
                     .font(Theme.captionFont())
@@ -359,26 +372,56 @@ struct AutoResizingPromptInput: View {
 
                 Spacer()
 
-                Button(action: onSubmit) {
-                    HStack(spacing: Theme.spacingS) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 12, weight: .medium))
-                        Text("Generate")
-                            .font(Theme.headlineFont(13))
+                HStack(spacing: Theme.spacingS) {
+                    // Short prompt button
+                    Button(action: onSubmitShort) {
+                        HStack(spacing: Theme.spacingXS) {
+                            Image(systemName: "bolt")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Short")
+                                .font(Theme.headlineFont(12))
+                        }
+                        .foregroundColor(Theme.accent)
+                        .padding(.horizontal, Theme.spacingM)
+                        .padding(.vertical, Theme.spacingS)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.radiusS)
+                                .fill(Theme.accent.opacity(0.15))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.radiusS)
+                                .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+                        )
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, Theme.spacingL)
-                    .padding(.vertical, Theme.spacingS)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.radiusS)
-                            .fill(Theme.accent)
-                    )
-                    .shadow(color: Theme.accentGlow, radius: 8, x: 0, y: 2)
+                    .buttonStyle(.plain)
+                    .disabled(isDisabled)
+                    .opacity(isDisabled ? 0.5 : 1)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help("Generate a concise, focused prompt")
+
+                    // Long prompt button
+                    Button(action: onSubmitLong) {
+                        HStack(spacing: Theme.spacingXS) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Long")
+                                .font(Theme.headlineFont(12))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, Theme.spacingM)
+                        .padding(.vertical, Theme.spacingS)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.radiusS)
+                                .fill(Theme.accent)
+                        )
+                        .shadow(color: Theme.accentGlow, radius: 6, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isDisabled)
+                    .opacity(isDisabled ? 0.5 : 1)
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .help("Generate a detailed, comprehensive prompt")
                 }
-                .buttonStyle(.plain)
-                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
-                .opacity(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating ? 0.5 : 1)
-                .keyboardShortcut(.return, modifiers: .command)
             }
         }
     }
