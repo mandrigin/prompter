@@ -41,16 +41,21 @@ class DataStore: ObservableObject {
         }
     }
 
-    /// Find existing history item with the same prompt text
+    /// Find existing non-archived history item with the same prompt text
     func findExistingPrompt(_ promptText: String) -> PromptHistory? {
         let normalizedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return history.first { $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedPrompt }
+        return history.first {
+            !$0.isArchived &&
+            $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedPrompt
+        }
     }
 
     /// Add a new version to an existing history item
     func addVersionToHistory(id: UUID, output: String) {
         if let index = history.firstIndex(where: { $0.id == id }) {
             history[index].addVersion(output: output)
+            // Update timestamp for correct date grouping
+            history[index].timestamp = Date()
             // Move to top of history
             let item = history.remove(at: index)
             history.insert(item, at: 0)
@@ -111,6 +116,8 @@ class DataStore: ObservableObject {
             history[index].addVersion(output: output)
             history[index].generationStatus = .completed
             history[index].errorMessage = nil
+            // Update timestamp so item appears in correct date group (Today/Yesterday/etc)
+            history[index].timestamp = Date()
             // Move to top of history since it was just updated
             let item = history.remove(at: index)
             history.insert(item, at: 0)
