@@ -5,6 +5,7 @@ import SwiftUI
 class DataStore: ObservableObject {
     @Published var history: [PromptHistory] = []
     @Published var templates: [CustomTemplate] = []
+    @Published var generatingItemId: UUID? = nil
 
     private let historyKey = "promptHistory"
     private let templatesKey = "customTemplates"
@@ -14,6 +15,8 @@ class DataStore: ObservableObject {
         loadHistory()
         loadTemplates()
         seedDefaultTemplatesIfNeeded()
+        // Reset any stuck "generating" statuses on startup
+        resetStuckGenerations()
     }
 
     // MARK: - History Management
@@ -24,6 +27,9 @@ class DataStore: ObservableObject {
     }
 
     func deleteHistoryItem(_ item: PromptHistory) {
+        if generatingItemId == item.id {
+            generatingItemId = nil
+        }
         history.removeAll { $0.id == item.id }
         saveHistory()
     }
@@ -54,6 +60,70 @@ class DataStore: ObservableObject {
             history[index].generatedOutput = output
             saveHistory()
         }
+    }
+
+    // MARK: - Generation Status Management
+
+    func updateGenerationStatus(id: UUID, status: GenerationStatus, error: String? = nil) {
+        if let index = history.firstIndex(where: { $0.id == id }) {
+            history[index].generationStatus = status
+            if let error = error {
+                history[index].errorMessage = error
+            }
+            saveHistory()
+        }
+    }
+
+    func startGeneration(id: UUID) {
+        generatingItemId = id
+        updateGenerationStatus(id: id, status: .generating)
+    }
+
+    func completeGeneration(id: UUID, output: String) {
+        if let index = history.firstIndex(where: { $0.id == id }) {
+            history[index].generatedOutput = output
+            history[index].generationStatus = .completed
+            history[index].errorMessage = nil
+            saveHistory()
+        }
+        if generatingItemId == id {
+            generatingItemId = nil
+        }
+    }
+
+    func failGeneration(id: UUID, error: String) {
+        updateGenerationStatus(id: id, status: .failed, error: error)
+        if generatingItemId == id {
+            generatingItemId = nil
+        }
+    }
+
+    func cancelGeneration(id: UUID) {
+        // Reset to pending if cancelled
+        updateGenerationStatus(id: id, status: .pending)
+        if generatingItemId == id {
+            generatingItemId = nil
+        }
+    }
+
+    /// Check if a specific item is currently generating
+    func isGenerating(id: UUID) -> Bool {
+        generatingItemId == id
+    }
+
+    /// Get the history item by ID
+    func historyItem(byId id: UUID) -> PromptHistory? {
+        history.first { $0.id == id }
+    }
+
+    private func resetStuckGenerations() {
+        // On startup, reset any items stuck in "generating" state to "pending"
+        for i in history.indices {
+            if history[i].generationStatus == .generating {
+                history[i].generationStatus = .pending
+            }
+        }
+        saveHistory()
     }
 
     func clearHistory() {

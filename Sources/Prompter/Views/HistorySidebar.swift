@@ -197,8 +197,34 @@ struct HistoryRow: View {
 
     @State private var isHovered = false
 
+    private var statusIndicator: some View {
+        Group {
+            switch item.generationStatus {
+            case .pending:
+                // No indicator for pending
+                EmptyView()
+            case .generating:
+                ProgressView()
+                    .controlSize(.mini)
+                    .scaleEffect(0.7)
+            case .completed:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(Theme.success)
+            case .failed:
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(Theme.error)
+            }
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: Theme.spacingS) {
+            // Status indicator
+            statusIndicator
+                .frame(width: 14)
+
             VStack(alignment: .leading, spacing: Theme.spacingXS) {
                 HStack(spacing: Theme.spacingXS) {
                     Text(item.prompt)

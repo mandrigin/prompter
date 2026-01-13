@@ -7,17 +7,28 @@ struct MainView: View {
 
     @State private var promptText: String = ""
     @State private var showingHistory: Bool = true
-    @State private var isGenerating: Bool = false
-    @State private var currentHistoryItem: PromptHistory? = nil
-    @State private var generationError: String? = nil
+    @State private var selectedItemId: UUID? = nil
     @State private var generationTask: Task<Void, Never>? = nil
     @State private var showingErrorAlert: Bool = false
+    @State private var errorMessage: String? = nil
 
     private let promptService = PromptService()
 
-    /// The output to display - either from current history item or nothing
+    /// The currently selected history item
+    private var selectedItem: PromptHistory? {
+        guard let id = selectedItemId else { return nil }
+        return dataStore.historyItem(byId: id)
+    }
+
+    /// Whether the selected item is currently generating
+    private var isSelectedItemGenerating: Bool {
+        guard let id = selectedItemId else { return false }
+        return dataStore.isGenerating(id: id)
+    }
+
+    /// The output to display - either from selected history item or nothing
     private var displayedOutput: String? {
-        currentHistoryItem?.generatedOutput
+        selectedItem?.generatedOutput
     }
 
     var body: some View {
@@ -29,8 +40,8 @@ struct MainView: View {
                         selectHistoryItem(item)
                     },
                     onDelete: { item in
-                        if currentHistoryItem?.id == item.id {
-                            currentHistoryItem = nil
+                        if selectedItemId == item.id {
+                            selectedItemId = nil
                         }
                         dataStore.deleteHistoryItem(item)
                     },
@@ -63,15 +74,31 @@ struct MainView: View {
                         // Prompt input with auto-resize
                         AutoResizingPromptInput(
                             text: $promptText,
-                            isGenerating: isGenerating,
+                            isGenerating: dataStore.generatingItemId != nil,
                             onSubmit: submitPrompt
                         )
 
-                        // Generated output display
-                        if isGenerating {
+                        // Generated output display based on selected item state
+                        if isSelectedItemGenerating {
                             GeneratingView(onCancel: cancelGeneration)
-                        } else if let output = displayedOutput {
-                            MarkdownOutputView(content: output)
+                        } else if let item = selectedItem {
+                            switch item.generationStatus {
+                            case .completed:
+                                if let output = item.generatedOutput {
+                                    MarkdownOutputView(content: output)
+                                }
+                            case .failed:
+                                FailedGenerationView(
+                                    error: item.errorMessage ?? "Unknown error",
+                                    onRetry: { retryGeneration(item: item) }
+                                )
+                            case .pending:
+                                // Show nothing or a prompt to generate
+                                EmptyView()
+                            case .generating:
+                                // Should not happen if isSelectedItemGenerating is false
+                                GeneratingView(onCancel: cancelGeneration)
+                            }
                         }
                     }
                     .padding(Theme.spacingXL)
@@ -85,40 +112,36 @@ struct MainView: View {
         .frame(minWidth: 500, minHeight: 400)
         .alert("Generation Failed", isPresented: $showingErrorAlert) {
             Button("Dismiss", role: .cancel) {
-                generationError = nil
+                errorMessage = nil
             }
         } message: {
-            Text(generationError ?? "An unknown error occurred")
+            Text(errorMessage ?? "An unknown error occurred")
         }
     }
 
     private func selectHistoryItem(_ item: PromptHistory) {
-        // Cancel any ongoing generation
-        if isGenerating {
-            cancelGeneration()
-        }
-
-        // Set the prompt text and current item
+        // Select the item - don't cancel generation, allow viewing it
+        selectedItemId = item.id
         promptText = item.prompt
-        currentHistoryItem = item
     }
 
     private func submitPrompt() {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
-        // Create new history item and set it as current
-        let historyItem = PromptHistory(prompt: trimmedPrompt)
+        // Create new history item with generating status
+        var historyItem = PromptHistory(prompt: trimmedPrompt)
+        historyItem.generationStatus = .generating
         dataStore.addHistoryItem(historyItem)
-        currentHistoryItem = historyItem
-
-        generationError = nil
-        isGenerating = true
+        selectedItemId = historyItem.id
 
         let inputPrompt = trimmedPrompt
         let currentSystemPrompt = systemPrompt
         let itemId = historyItem.id
         promptText = ""
+
+        // Mark as generating in datastore
+        dataStore.startGeneration(id: itemId)
 
         generationTask = Task {
             do {
@@ -128,22 +151,49 @@ struct MainView: View {
                 )
                 if !Task.isCancelled {
                     await MainActor.run {
-                        // Update the history item with the generated output
-                        if let item = dataStore.history.first(where: { $0.id == itemId }) {
-                            dataStore.updateHistoryItemOutput(item, output: output)
-                            // Refresh currentHistoryItem to get the updated version
-                            currentHistoryItem = dataStore.history.first(where: { $0.id == itemId })
-                        }
-                        isGenerating = false
+                        dataStore.completeGeneration(id: itemId, output: output)
                         generationTask = nil
                     }
                 }
             } catch {
                 if !Task.isCancelled {
                     await MainActor.run {
-                        generationError = error.localizedDescription
+                        dataStore.failGeneration(id: itemId, error: error.localizedDescription)
+                        errorMessage = error.localizedDescription
                         showingErrorAlert = true
-                        isGenerating = false
+                        generationTask = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private func retryGeneration(item: PromptHistory) {
+        let inputPrompt = item.prompt
+        let currentSystemPrompt = systemPrompt
+        let itemId = item.id
+
+        // Mark as generating
+        dataStore.startGeneration(id: itemId)
+
+        generationTask = Task {
+            do {
+                let output = try await promptService.generatePrompt(
+                    for: inputPrompt,
+                    systemPrompt: currentSystemPrompt
+                )
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        dataStore.completeGeneration(id: itemId, output: output)
+                        generationTask = nil
+                    }
+                }
+            } catch {
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        dataStore.failGeneration(id: itemId, error: error.localizedDescription)
+                        errorMessage = error.localizedDescription
+                        showingErrorAlert = true
                         generationTask = nil
                     }
                 }
@@ -154,7 +204,9 @@ struct MainView: View {
     private func cancelGeneration() {
         generationTask?.cancel()
         generationTask = nil
-        isGenerating = false
+        if let id = dataStore.generatingItemId {
+            dataStore.cancelGeneration(id: id)
+        }
     }
 }
 
@@ -362,6 +414,54 @@ struct GeneratingView: View {
                 Text("Cancel")
                     .font(Theme.captionFont())
                     .foregroundColor(Theme.textTertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(Theme.spacingXL)
+        .themedCard()
+    }
+}
+
+// MARK: - Failed Generation View
+
+struct FailedGenerationView: View {
+    let error: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: Theme.spacingM) {
+            Spacer()
+
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 32))
+                .foregroundColor(Theme.error)
+
+            Text("Generation Failed")
+                .font(Theme.headlineFont())
+                .foregroundColor(Theme.textPrimary)
+
+            Text(error)
+                .font(Theme.bodyFont())
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+
+            Spacer()
+
+            Button(action: onRetry) {
+                HStack(spacing: Theme.spacingS) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Retry")
+                        .font(Theme.headlineFont(13))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, Theme.spacingL)
+                .padding(.vertical, Theme.spacingS)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.radiusS)
+                        .fill(Theme.accent)
+                )
             }
             .buttonStyle(.plain)
         }
