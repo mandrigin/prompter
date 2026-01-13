@@ -28,6 +28,13 @@ class DataStore: ObservableObject {
         saveHistory()
     }
 
+    func updateHistoryOutput(id: UUID, output: String) {
+        if let index = history.firstIndex(where: { $0.id == id }) {
+            history[index].generatedOutput = output
+            saveHistory()
+        }
+    }
+
     func archiveHistoryItem(_ item: PromptHistory) {
         if let index = history.firstIndex(where: { $0.id == item.id }) {
             history[index].isArchived = true
