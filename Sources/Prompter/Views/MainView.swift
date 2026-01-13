@@ -269,8 +269,8 @@ struct TemplatePicker: View {
         if !templates.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.spacingS) {
-                    ForEach(templates) { template in
-                        TemplateChip(template: template, onSelect: onSelect)
+                    ForEach(Array(templates.enumerated()), id: \.element.id) { index, template in
+                        TemplateChip(template: template, colorIndex: index, onSelect: onSelect)
                     }
                 }
             }
@@ -280,27 +280,47 @@ struct TemplatePicker: View {
 
 struct TemplateChip: View {
     let template: CustomTemplate
+    let colorIndex: Int
     let onSelect: (CustomTemplate) -> Void
 
     @State private var isHovered = false
 
+    private var chipColor: (base: Color, highlight: Color) {
+        Theme.chipColor(for: colorIndex)
+    }
+
     var body: some View {
         Button(action: { onSelect(template) }) {
             Text(template.name)
-                .font(Theme.captionFont())
-                .foregroundColor(isHovered ? Theme.textPrimary : Theme.textSecondary)
+                .font(Theme.captionFont(12))
+                .fontWeight(.medium)
+                .foregroundColor(.white)
                 .padding(.horizontal, Theme.spacingM)
                 .padding(.vertical, Theme.spacingS)
                 .background(
-                    RoundedRectangle(cornerRadius: Theme.radiusS)
-                        .fill(isHovered ? Theme.elevated : Theme.card)
+                    RoundedRectangle(cornerRadius: Theme.radiusM)
+                        .fill(
+                            LinearGradient(
+                                colors: [chipColor.highlight, chipColor.base],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(
+                            color: chipColor.base.opacity(isHovered ? 0.5 : 0.25),
+                            radius: isHovered ? 8 : 4,
+                            x: 0,
+                            y: isHovered ? 4 : 2
+                        )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: Theme.radiusS)
-                        .stroke(isHovered ? Theme.accent.opacity(0.4) : Theme.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: Theme.radiusM)
+                        .stroke(chipColor.highlight.opacity(0.6), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
+        .scaleEffect(isHovered ? 1.05 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
         .onHover { isHovered = $0 }
         .help(template.content)
     }
