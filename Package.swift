@@ -14,7 +14,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Prompter",
-            exclude: ["Resources/Info.plist"]
+            exclude: ["Resources/Info.plist", "Resources/AppIcon.icns"]
         )
     ]
 )
