@@ -2,10 +2,32 @@
 
 A macOS menu bar app for Claude Code integration.
 
+## Table of Contents
+
+- [Requirements](#requirements)
+- [Building](#building)
+  - [Using the build script](#using-the-build-script-recommended)
+  - [Using Swift Package Manager](#using-swift-package-manager-directly)
+  - [Using xcodebuild](#using-xcodebuild)
+- [Running](#running)
+- [How to Use](#how-to-use)
+  - [Opening Prompter](#opening-prompter)
+  - [Entering Prompts](#entering-prompts)
+  - [Understanding the Modes](#understanding-the-modes)
+  - [Using Templates](#using-templates)
+  - [Working with History](#working-with-history)
+  - [Archiving Prompts](#archiving-prompts)
+  - [Settings](#settings)
+  - [Customizing the System Prompt](#customizing-the-system-prompt)
+- [Architecture](#architecture)
+  - [Project Structure](#project-structure)
+- [License](#license)
+
 ## Requirements
 
 - macOS 13.0+
 - Xcode 15.0+ or Swift 5.9+
+- Claude Code CLI installed
 
 ## Building
 
@@ -66,10 +88,11 @@ Prompter lives in your menu bar. Click the **terminal icon** in the menu bar to 
 1. Type your prompt in the text editor area
 2. Press **Cmd+Return** or click the **Send** button to submit
 3. Prompter sends your input to Claude Code CLI and generates three prompt variants
+4. View the generated variants in the output area below
 
 ### Understanding the Modes
 
-Prompter offers three modes, each generating a different style of prompt:
+Prompter generates three variants for each prompt, each with a different style:
 
 | Mode | Description | Use When |
 |------|-------------|----------|
@@ -77,7 +100,7 @@ Prompter offers three modes, each generating a different style of prompt:
 | **Strict** | Focused, concise responses | You need minimal, constrained output |
 | **Exploratory** | Creative, expansive responses | You want broader ideas and alternatives |
 
-Click the mode tabs at the top of the window to switch between them.
+Click the mode tabs at the top of the window to switch between them. The output view updates to show the selected variant.
 
 ### Using Templates
 
@@ -89,19 +112,37 @@ Each mode includes pre-defined templates to help you get started:
 
 Click a template button to populate the prompt field with its content, then customize as needed.
 
-### History
+### Working with History
 
-The sidebar shows your prompt history. Click any past prompt to reload it into the editor. Use the sidebar toggle button in the bottom toolbar to show or hide history.
+The sidebar shows your prompt history, grouped by date (Today, Yesterday, This Week, Earlier).
+
+- **Click** any past prompt to reload it into the editor
+- **Search** using the search field at the top of the sidebar
+- **Right-click** for context menu options (Use Prompt, Archive, Delete)
+- Use the **sidebar toggle** button in the bottom toolbar to show or hide history
+
+### Archiving Prompts
+
+Keep your history organized by archiving prompts you want to preserve but don't need to see regularly:
+
+- **Archive**: Right-click a prompt and select "Archive" to move it to the Archived section
+- **View Archived**: Click the chevron next to "Archived" in the sidebar to expand/collapse
+- **Unarchive**: Right-click an archived prompt and select "Unarchive" to restore it
+- **Search**: Searches include both active and archived prompts
 
 ### Settings
 
-Click the **gear icon** in the bottom toolbar to access settings. Click the **power icon** to quit Prompter.
+Access settings through:
+- **Gear icon** in the bottom toolbar
+- **Cmd+,** keyboard shortcut
+
+Click the **power icon** to quit Prompter.
 
 ### Customizing the System Prompt
 
 You can customize the instructions sent to Claude when generating prompt variants:
 
-1. Open **Settings** (gear icon)
+1. Open **Settings** (gear icon or Cmd+,)
 2. Go to the **General** tab
 3. Edit the **System Prompt** text field
 
@@ -117,13 +158,22 @@ Prompter is an agent app (`LSUIElement=true`) that runs in the menu bar without 
 
 ```
 .
-├── Package.swift           # Swift Package Manager manifest
+├── Package.swift                    # Swift Package Manager manifest
+├── build.sh                         # Build script for creating app bundle
 ├── Sources/
 │   └── Prompter/
-│       ├── PrompterApp.swift      # Main app entry point
+│       ├── PrompterApp.swift        # Main app entry point
+│       ├── PromptService.swift      # Claude Code CLI integration
+│       ├── Models/
+│       │   ├── DataStore.swift      # App state management
+│       │   ├── PromptHistory.swift  # History data model
+│       │   └── CustomTemplate.swift # Template data model
+│       ├── Views/
+│       │   ├── MainView.swift       # Main window UI
+│       │   ├── HistorySidebar.swift # History sidebar
+│       │   └── SettingsView.swift   # Settings window
 │       └── Resources/
-│           └── Info.plist         # App configuration
-├── build.sh                # Build script for creating app bundle
+│           └── Info.plist           # App configuration
 └── README.md
 ```
 
