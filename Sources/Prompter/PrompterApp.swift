@@ -8,14 +8,17 @@ struct PrompterApp: App {
         WindowGroup {
             MainView()
                 .environmentObject(dataStore)
+                .background(Theme.backgroundGradient)
+                .preferredColorScheme(.dark)
         }
-        .defaultSize(width: 1000, height: 700)
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 900, height: 650)
         .defaultPosition(.center)
-        .windowResizability(.contentSize)
 
         Settings {
             SettingsView()
                 .environmentObject(dataStore)
+                .preferredColorScheme(.dark)
         }
     }
 }

@@ -10,7 +10,6 @@ struct HistorySidebar: View {
     @State private var searchText: String = ""
     @State private var showArchived: Bool = false
 
-    // Search searches ALL items (archived and active)
     private var searchResults: [PromptHistory] {
         if searchText.isEmpty {
             return []
@@ -48,28 +47,38 @@ struct HistorySidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search field
-            HStack {
+            // Search field with Opera-like clean styling
+            HStack(spacing: Theme.spacingS) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Theme.textTertiary)
                 TextField("Search", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 11))
+                    .font(Theme.captionFont(12))
+                    .foregroundColor(Theme.textPrimary)
             }
-            .padding(8)
-            .background(Color(NSColor.controlBackgroundColor))
+            .padding(.horizontal, Theme.spacingM)
+            .padding(.vertical, Theme.spacingS)
+            .background(Theme.card)
 
-            Divider()
+            Rectangle()
+                .fill(Theme.separator)
+                .frame(height: 1)
 
             // History list
             if !searchText.isEmpty {
-                // Search mode: show ALL matching items (archived and active)
                 if searchResults.isEmpty {
                     emptyState(message: "No results")
                 } else {
-                    List {
-                        ForEach(groupItems(searchResults), id: \.0) { section, items in
-                            Section(header: Text(section).font(.system(size: 10, weight: .semibold))) {
+                    historyList(groupItems(searchResults))
+                }
+            } else if activeHistory.isEmpty && archivedHistory.isEmpty {
+                emptyState(message: "No history yet")
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        ForEach(groupItems(activeHistory), id: \.0) { section, items in
+                            Section(header: sectionHeader(section)) {
                                 ForEach(items) { item in
                                     HistoryRow(
                                         item: item,
@@ -81,77 +90,104 @@ struct HistorySidebar: View {
                                 }
                             }
                         }
-                    }
-                    .listStyle(.sidebar)
-                }
-            } else if activeHistory.isEmpty && archivedHistory.isEmpty {
-                emptyState(message: "No history")
-            } else {
-                List {
-                    // Active items
-                    ForEach(groupItems(activeHistory), id: \.0) { section, items in
-                        Section(header: Text(section).font(.system(size: 10, weight: .semibold))) {
-                            ForEach(items) { item in
-                                HistoryRow(
-                                    item: item,
-                                    onSelect: onSelect,
-                                    onDelete: onDelete,
-                                    onArchive: onArchive,
-                                    onUnarchive: onUnarchive
-                                )
-                            }
-                        }
-                    }
 
-                    // Archived section
-                    if !archivedHistory.isEmpty {
-                        Section(header: archivedSectionHeader) {
-                            if showArchived {
-                                ForEach(archivedHistory) { item in
-                                    HistoryRow(
-                                        item: item,
-                                        onSelect: onSelect,
-                                        onDelete: onDelete,
-                                        onArchive: onArchive,
-                                        onUnarchive: onUnarchive
-                                    )
+                        if !archivedHistory.isEmpty {
+                            Section(header: archivedSectionHeader) {
+                                if showArchived {
+                                    ForEach(archivedHistory) { item in
+                                        HistoryRow(
+                                            item: item,
+                                            onSelect: onSelect,
+                                            onDelete: onDelete,
+                                            onArchive: onArchive,
+                                            onUnarchive: onUnarchive
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+                    .padding(.vertical, Theme.spacingS)
                 }
-                .listStyle(.sidebar)
             }
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(Theme.sidebarGradient)
+    }
+
+    private func historyList(_ grouped: [(String, [PromptHistory])]) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                ForEach(grouped, id: \.0) { section, items in
+                    Section(header: sectionHeader(section)) {
+                        ForEach(items) { item in
+                            HistoryRow(
+                                item: item,
+                                onSelect: onSelect,
+                                onDelete: onDelete,
+                                onArchive: onArchive,
+                                onUnarchive: onUnarchive
+                            )
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, Theme.spacingS)
+        }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(Theme.captionFont(10))
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.textTertiary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+            Spacer()
+        }
+        .padding(.horizontal, Theme.spacingM)
+        .padding(.vertical, Theme.spacingS)
+        .background(Theme.surface.opacity(0.95))
     }
 
     private var archivedSectionHeader: some View {
-        HStack {
+        HStack(spacing: Theme.spacingS) {
             Image(systemName: "archivebox")
-                .font(.system(size: 9))
+                .font(.system(size: 10, weight: .medium))
             Text("Archived (\(archivedHistory.count))")
-                .font(.system(size: 10, weight: .semibold))
+                .font(Theme.captionFont(10))
+                .fontWeight(.semibold)
+                .textCase(.uppercase)
+                .tracking(0.5)
             Spacer()
-            Button(action: { showArchived.toggle() }) {
+            Button(action: { withAnimation { showArchived.toggle() } }) {
                 Image(systemName: showArchived ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 9))
+                    .font(.system(size: 10, weight: .medium))
             }
             .buttonStyle(.plain)
         }
-        .foregroundColor(.secondary)
+        .foregroundColor(Theme.textTertiary)
+        .padding(.horizontal, Theme.spacingM)
+        .padding(.vertical, Theme.spacingS)
+        .background(Theme.surface.opacity(0.95))
     }
 
     private func emptyState(message: String) -> some View {
-        VStack {
+        VStack(spacing: Theme.spacingM) {
             Spacer()
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 28, weight: .light))
+                .foregroundColor(Theme.textTertiary.opacity(0.5))
             Text(message)
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .font(Theme.captionFont())
+                .foregroundColor(Theme.textTertiary)
             Spacer()
         }
+        .frame(maxWidth: .infinity)
     }
 }
+
+// MARK: - History Row
 
 struct HistoryRow: View {
     let item: PromptHistory
@@ -160,42 +196,50 @@ struct HistoryRow: View {
     let onArchive: (PromptHistory) -> Void
     let onUnarchive: (PromptHistory) -> Void
 
-    @State private var isHovering = false
+    @State private var isHovered = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+        HStack(alignment: .top, spacing: Theme.spacingS) {
+            VStack(alignment: .leading, spacing: Theme.spacingXS) {
+                HStack(spacing: Theme.spacingXS) {
                     Text(item.prompt)
-                        .font(.system(size: 11))
+                        .font(Theme.captionFont(12))
+                        .lineSpacing(2)
                         .lineLimit(2)
-                        .foregroundColor(.primary)
+                        .foregroundColor(Theme.textPrimary)
 
                     if item.isArchived {
                         Image(systemName: "archivebox")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Theme.textTertiary)
                     }
                 }
 
                 Text(formatDate(item.timestamp))
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
+                    .font(Theme.captionFont(10))
+                    .foregroundColor(Theme.textTertiary)
             }
 
             Spacer()
 
-            if isHovering {
+            if isHovered {
                 Button(action: { onDelete(item) }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.textTertiary)
                 }
                 .buttonStyle(.plain)
+                .transition(.opacity)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, Theme.spacingM)
+        .padding(.vertical, Theme.spacingS)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.radiusS)
+                .fill(isHovered ? Theme.elevated.opacity(0.5) : Color.clear)
+        )
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .onHover { isHovered = $0 }
         .onTapGesture { onSelect(item) }
         .contextMenu {
             Button(action: { onSelect(item) }) {
@@ -220,6 +264,7 @@ struct HistoryRow: View {
                 Label("Delete", systemImage: "trash")
             }
         }
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
     }
 
     private func formatDate(_ date: Date) -> String {
@@ -228,4 +273,3 @@ struct HistoryRow: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
-
