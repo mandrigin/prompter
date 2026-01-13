@@ -98,8 +98,12 @@ actor PromptService {
     }
 
     /// Generate prompt variants for the given user input
-    func generateVariants(for userInput: String, model: String = "sonnet") async throws -> PromptVariants {
-        let systemPrompt = """
+    func generateVariants(
+        for userInput: String,
+        model: String = "sonnet",
+        systemPrompt: String? = nil
+    ) async throws -> PromptVariants {
+        let effectiveSystemPrompt = systemPrompt ?? """
         You are a prompt engineering assistant. Given a user's rough idea or description, \
         generate three versions of an improved prompt:
 
@@ -114,7 +118,7 @@ actor PromptService {
 
         return try await executeClaudeCommand(
             prompt: userPrompt,
-            systemPrompt: systemPrompt,
+            systemPrompt: effectiveSystemPrompt,
             model: model
         )
     }
@@ -220,9 +224,10 @@ extension PromptService {
     func generateVariantsStreaming(
         for userInput: String,
         model: String = "sonnet",
+        systemPrompt: String? = nil,
         onProgress: @escaping (String) -> Void
     ) async throws -> PromptVariants {
-        let systemPrompt = """
+        let effectiveSystemPrompt = systemPrompt ?? """
         You are a prompt engineering assistant. Given a user's rough idea or description, \
         generate three versions of an improved prompt:
 
@@ -241,7 +246,7 @@ extension PromptService {
             "--print",
             "--output-format", "stream-json",
             "--model", model,
-            "--system-prompt", systemPrompt,
+            "--system-prompt", effectiveSystemPrompt,
             "--json-schema", responseSchema,
             "--dangerously-skip-permissions",
             userPrompt

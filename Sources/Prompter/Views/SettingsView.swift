@@ -88,15 +88,56 @@ struct SettingsTabButton: View {
     }
 }
 
+/// Default system prompt used for generating prompt variants
+let defaultSystemPrompt = """
+You are a prompt engineering assistant. Given a user's rough idea or description, \
+generate three versions of an improved prompt:
+
+1. **primary**: A well-structured, balanced prompt suitable for general use
+2. **strict**: A more constrained version with explicit boundaries and limitations
+3. **exploratory**: A more open-ended version that encourages creative exploration
+
+Return ONLY valid JSON matching the schema. No explanations or markdown.
+"""
+
 struct GeneralSettingsView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showDockIcon") private var showDockIcon = false
+    @AppStorage("systemPrompt") private var systemPrompt = defaultSystemPrompt
 
     var body: some View {
         Form {
             Section {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                 Toggle("Show in Dock", isOn: $showDockIcon)
+            }
+
+            Section("System Prompt") {
+                TextEditor(text: $systemPrompt)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(height: 120)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                    )
+
+                HStack {
+                    Text("Customize the instructions sent to Claude when generating variants")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+
+                    Button("Reset to Default") {
+                        systemPrompt = defaultSystemPrompt
+                    }
+                    .controlSize(.small)
+                    .disabled(systemPrompt == defaultSystemPrompt)
+                }
             }
 
             Section {

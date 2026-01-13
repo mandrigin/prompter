@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject var dataStore: DataStore
+    @AppStorage("systemPrompt") private var systemPrompt = defaultSystemPrompt
 
     @State private var promptText: String = ""
     @State private var selectedMode: PromptMode = .primary
@@ -99,11 +100,15 @@ struct MainView: View {
         isGenerating = true
 
         let inputPrompt = trimmedPrompt
+        let currentSystemPrompt = systemPrompt
         promptText = ""
 
         Task {
             do {
-                let variants = try await promptService.generateVariants(for: inputPrompt)
+                let variants = try await promptService.generateVariants(
+                    for: inputPrompt,
+                    systemPrompt: currentSystemPrompt
+                )
                 await MainActor.run {
                     generatedVariants = variants
                     isGenerating = false
