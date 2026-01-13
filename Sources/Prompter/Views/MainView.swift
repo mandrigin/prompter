@@ -17,6 +17,7 @@ struct MainView: View {
     @State private var generationTask: Task<Void, Never>? = nil
     @State private var showingErrorAlert: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var selectedVersionIndex: Int? = nil
 
     private let promptService = PromptService()
 
@@ -32,9 +33,19 @@ struct MainView: View {
         return dataStore.isGenerating(id: id)
     }
 
-    /// The output to display - either from selected history item or nothing
+    /// The output to display - either from selected version or latest
     private var displayedOutput: String? {
-        selectedItem?.generatedOutput
+        guard let item = selectedItem else { return nil }
+        if let index = selectedVersionIndex, index < item.versions.count {
+            return item.versions[index].output
+        }
+        return item.generatedOutput
+    }
+
+    /// The effective version index (defaults to latest)
+    private var effectiveVersionIndex: Int {
+        guard let item = selectedItem else { return 0 }
+        return selectedVersionIndex ?? max(0, item.versions.count - 1)
     }
 
     /// Whether to show expanded input (no output yet) or compact input (has output)
@@ -118,8 +129,19 @@ struct MainView: View {
                                 } else if let item = selectedItem {
                                     switch item.generationStatus {
                                     case .completed:
-                                        if let output = item.generatedOutput {
-                                            MarkdownOutputView(content: output)
+                                        if item.hasResult {
+                                            VStack(spacing: Theme.spacingM) {
+                                                if item.versions.count > 1 {
+                                                    VersionSelector(
+                                                        versions: item.versions,
+                                                        selectedIndex: effectiveVersionIndex,
+                                                        onSelect: { selectedVersionIndex = $0 }
+                                                    )
+                                                }
+                                                if let output = displayedOutput {
+                                                    MarkdownOutputView(content: output)
+                                                }
+                                            }
                                         }
                                     case .failed:
                                         FailedGenerationView(
@@ -157,6 +179,8 @@ struct MainView: View {
         // Select the item - don't cancel generation, allow viewing it
         selectedItemId = item.id
         promptText = item.prompt
+        // Reset version selection to show latest
+        selectedVersionIndex = nil
     }
 
     private func createNewPrompt() {
@@ -505,6 +529,79 @@ struct PromptInput: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isExpanded)
+    }
+}
+
+// MARK: - Version Selector
+
+struct VersionSelector: View {
+    let versions: [PromptVersion]
+    let selectedIndex: Int
+    let onSelect: (Int) -> Void
+
+    private let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.spacingS) {
+                ForEach(Array(versions.enumerated()), id: \.element.id) { index, version in
+                    VersionTab(
+                        index: index,
+                        timestamp: timeFormatter.string(from: version.timestamp),
+                        isSelected: index == selectedIndex,
+                        isLatest: index == versions.count - 1,
+                        onSelect: { onSelect(index) }
+                    )
+                }
+            }
+            .padding(.horizontal, Theme.spacingXS)
+        }
+    }
+}
+
+struct VersionTab: View {
+    let index: Int
+    let timestamp: String
+    let isSelected: Bool
+    let isLatest: Bool
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: Theme.spacingXS) {
+                Text("v\(index + 1)")
+                    .font(Theme.captionFont(11))
+                    .fontWeight(.semibold)
+                Text("·")
+                    .foregroundColor(Theme.textTertiary)
+                Text(timestamp)
+                    .font(Theme.captionFont(10))
+                if isLatest {
+                    Text("(latest)")
+                        .font(Theme.captionFont(9))
+                        .foregroundColor(Theme.textTertiary)
+                }
+            }
+            .foregroundColor(isSelected ? Theme.accent : Theme.textSecondary)
+            .padding(.horizontal, Theme.spacingM)
+            .padding(.vertical, Theme.spacingS)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.radiusS)
+                    .fill(isSelected ? Theme.accent.opacity(0.15) : (isHovered ? Theme.elevated : Theme.card))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radiusS)
+                    .stroke(isSelected ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
