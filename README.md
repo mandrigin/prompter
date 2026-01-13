@@ -97,6 +97,18 @@ The sidebar shows your prompt history. Click any past prompt to reload it into t
 
 Click the **gear icon** in the bottom toolbar to access settings. Click the **power icon** to quit Prompter.
 
+### Customizing the System Prompt
+
+You can customize the instructions sent to Claude when generating prompt variants:
+
+1. Open **Settings** (gear icon)
+2. Go to the **General** tab
+3. Edit the **System Prompt** text field
+
+The default system prompt instructs Claude to act as a prompt engineering assistant, generating three variants (primary, strict, exploratory) for your input. You can modify this to change how Claude interprets and transforms your prompts.
+
+Click **Reset to Default** to restore the original system prompt.
+
 ## Architecture
 
 Prompter is an agent app (`LSUIElement=true`) that runs in the menu bar without a Dock icon. It provides quick access to Claude Code functionality.
