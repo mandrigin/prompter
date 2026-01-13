@@ -5,8 +5,7 @@ import SwiftUI
 class DataStore: ObservableObject {
     @Published var history: [PromptHistory] = []
     @Published var templates: [CustomTemplate] = []
-    /// Set of item IDs currently generating (supports parallel generation)
-    @Published var generatingIds: Set<UUID> = []
+    @Published var generatingItemId: UUID? = nil
 
     private let historyKey = "promptHistory"
     private let templatesKey = "customTemplates"
@@ -28,7 +27,9 @@ class DataStore: ObservableObject {
     }
 
     func deleteHistoryItem(_ item: PromptHistory) {
-        generatingIds.remove(item.id)
+        if generatingItemId == item.id {
+            generatingItemId = nil
+        }
         history.removeAll { $0.id == item.id }
         saveHistory()
     }
@@ -100,53 +101,44 @@ class DataStore: ObservableObject {
         }
     }
 
-    func startGeneration(id: UUID, length: PromptLength) {
-        generatingIds.insert(id)
-        if let index = history.firstIndex(where: { $0.id == id }) {
-            history[index].generationStatus = .generating
-            history[index].activeGeneration = length
-            saveHistory()
-        }
+    func startGeneration(id: UUID) {
+        generatingItemId = id
+        updateGenerationStatus(id: id, status: .generating)
     }
 
     func completeGeneration(id: UUID, output: String) {
-        generatingIds.remove(id)
         if let index = history.firstIndex(where: { $0.id == id }) {
-            history[index].generatedOutput = output
+            history[index].addVersion(output: output)
             history[index].generationStatus = .completed
             history[index].errorMessage = nil
-            history[index].activeGeneration = nil
+            // Move to top of history since it was just updated
+            let item = history.remove(at: index)
+            history.insert(item, at: 0)
             saveHistory()
+        }
+        if generatingItemId == id {
+            generatingItemId = nil
         }
     }
 
     func failGeneration(id: UUID, error: String) {
-        generatingIds.remove(id)
-        if let index = history.firstIndex(where: { $0.id == id }) {
-            history[index].generationStatus = .failed
-            history[index].errorMessage = error
-            history[index].activeGeneration = nil
-            saveHistory()
+        updateGenerationStatus(id: id, status: .failed, error: error)
+        if generatingItemId == id {
+            generatingItemId = nil
         }
     }
 
     func cancelGeneration(id: UUID) {
-        generatingIds.remove(id)
-        if let index = history.firstIndex(where: { $0.id == id }) {
-            history[index].generationStatus = .cancelled
-            history[index].activeGeneration = nil
-            saveHistory()
+        // Reset to pending if cancelled
+        updateGenerationStatus(id: id, status: .pending)
+        if generatingItemId == id {
+            generatingItemId = nil
         }
     }
 
     /// Check if a specific item is currently generating
     func isGenerating(id: UUID) -> Bool {
-        generatingIds.contains(id)
-    }
-
-    /// Get the active generation type for an item
-    func activeGeneration(for id: UUID) -> PromptLength? {
-        history.first { $0.id == id }?.activeGeneration
+        generatingItemId == id
     }
 
     /// Get the history item by ID
@@ -159,10 +151,8 @@ class DataStore: ObservableObject {
         for i in history.indices {
             if history[i].generationStatus == .generating {
                 history[i].generationStatus = .pending
-                history[i].activeGeneration = nil
             }
         }
-        generatingIds.removeAll()
         saveHistory()
     }
 

@@ -1,6 +1,11 @@
 import SwiftUI
 import MarkdownUI
 
+enum PromptLength {
+    case short
+    case long
+}
+
 struct MainView: View {
     @EnvironmentObject var dataStore: DataStore
     @AppStorage("systemPromptShort") private var systemPromptShort = defaultShortSystemPrompt
@@ -9,8 +14,7 @@ struct MainView: View {
     @State private var promptText: String = ""
     @State private var showingHistory: Bool = true
     @State private var selectedItemId: UUID? = nil
-    /// Tracks generation tasks per prompt ID (supports parallel generation)
-    @State private var generationTasks: [UUID: Task<Void, Never>] = [:]
+    @State private var generationTask: Task<Void, Never>? = nil
     @State private var showingErrorAlert: Bool = false
     @State private var errorMessage: String? = nil
 
@@ -38,7 +42,7 @@ struct MainView: View {
             if showingHistory {
                 HistorySidebar(
                     history: dataStore.history,
-                    activeRequestIds: dataStore.generatingIds,
+                    activeRequestIds: dataStore.generatingItemId.map { Set([$0]) } ?? Set(),
                     onSelect: { item in
                         selectHistoryItem(item)
                     },
@@ -81,8 +85,7 @@ struct MainView: View {
                         // Prompt input with auto-resize
                         AutoResizingPromptInput(
                             text: $promptText,
-                            isGeneratingShort: selectedItem?.activeGeneration == .short,
-                            isGeneratingLong: selectedItem?.activeGeneration == .long,
+                            isGenerating: dataStore.generatingItemId != nil,
                             onSubmitShort: { submitPrompt(length: .short) },
                             onSubmitLong: { submitPrompt(length: .long) }
                         )
@@ -138,22 +141,28 @@ struct MainView: View {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
-        // Create new history item with generating status
-        var historyItem = PromptHistory(prompt: trimmedPrompt)
-        historyItem.generationStatus = .generating
-        historyItem.activeGeneration = length
-        dataStore.addHistoryItem(historyItem)
-        selectedItemId = historyItem.id
+        let itemId: UUID
 
+        // Check if this prompt already exists - if so, add a new version instead of creating duplicate
+        if let existingItem = dataStore.findExistingPrompt(trimmedPrompt) {
+            itemId = existingItem.id
+        } else {
+            // Create new history item with generating status
+            var historyItem = PromptHistory(prompt: trimmedPrompt)
+            historyItem.generationStatus = .generating
+            dataStore.addHistoryItem(historyItem)
+            itemId = historyItem.id
+        }
+
+        selectedItemId = itemId
         let inputPrompt = trimmedPrompt
         let currentSystemPrompt = length == .short ? systemPromptShort : systemPromptLong
-        let itemId = historyItem.id
         promptText = ""
 
         // Mark as generating in datastore
-        dataStore.startGeneration(id: itemId, length: length)
+        dataStore.startGeneration(id: itemId)
 
-        let task = Task {
+        generationTask = Task {
             do {
                 let output = try await promptService.generatePrompt(
                     for: inputPrompt,
@@ -162,7 +171,7 @@ struct MainView: View {
                 if !Task.isCancelled {
                     await MainActor.run {
                         dataStore.completeGeneration(id: itemId, output: output)
-                        generationTasks.removeValue(forKey: itemId)
+                        generationTask = nil
                     }
                 }
             } catch {
@@ -171,23 +180,23 @@ struct MainView: View {
                         dataStore.failGeneration(id: itemId, error: error.localizedDescription)
                         errorMessage = error.localizedDescription
                         showingErrorAlert = true
-                        generationTasks.removeValue(forKey: itemId)
+                        generationTask = nil
                     }
                 }
             }
         }
-        generationTasks[itemId] = task
     }
 
-    private func retryGeneration(item: PromptHistory, length: PromptLength = .long) {
+    private func retryGeneration(item: PromptHistory) {
         let inputPrompt = item.prompt
-        let currentSystemPrompt = length == .short ? systemPromptShort : systemPromptLong
+        // Default to long system prompt for retries
+        let currentSystemPrompt = systemPromptLong
         let itemId = item.id
 
         // Mark as generating
-        dataStore.startGeneration(id: itemId, length: length)
+        dataStore.startGeneration(id: itemId)
 
-        let task = Task {
+        generationTask = Task {
             do {
                 let output = try await promptService.generatePrompt(
                     for: inputPrompt,
@@ -196,7 +205,7 @@ struct MainView: View {
                 if !Task.isCancelled {
                     await MainActor.run {
                         dataStore.completeGeneration(id: itemId, output: output)
-                        generationTasks.removeValue(forKey: itemId)
+                        generationTask = nil
                     }
                 }
             } catch {
@@ -205,20 +214,19 @@ struct MainView: View {
                         dataStore.failGeneration(id: itemId, error: error.localizedDescription)
                         errorMessage = error.localizedDescription
                         showingErrorAlert = true
-                        generationTasks.removeValue(forKey: itemId)
+                        generationTask = nil
                     }
                 }
             }
         }
-        generationTasks[itemId] = task
     }
 
     private func cancelGeneration() {
-        // Cancel the currently selected item's generation
-        guard let id = selectedItemId else { return }
-        generationTasks[id]?.cancel()
-        generationTasks.removeValue(forKey: id)
-        dataStore.cancelGeneration(id: id)
+        generationTask?.cancel()
+        generationTask = nil
+        if let id = dataStore.generatingItemId {
+            dataStore.cancelGeneration(id: id)
+        }
     }
 }
 
@@ -364,8 +372,7 @@ struct TemplateChip: View {
 
 struct AutoResizingPromptInput: View {
     @Binding var text: String
-    var isGeneratingShort: Bool = false
-    var isGeneratingLong: Bool = false
+    var isGenerating: Bool = false
     let onSubmitShort: () -> Void
     let onSubmitLong: () -> Void
 
@@ -375,12 +382,8 @@ struct AutoResizingPromptInput: View {
     private let minHeight: CGFloat = 60
     private let maxHeight: CGFloat = 200
 
-    private var isAnyGenerating: Bool {
-        isGeneratingShort || isGeneratingLong
-    }
-
-    private var hasText: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var isDisabled: Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating
     }
 
     var body: some View {
@@ -413,7 +416,7 @@ struct AutoResizingPromptInput: View {
                     .scrollDisabled(textHeight <= maxHeight)
                     .padding(Theme.spacingM)
                     .focused($isFocused)
-                    .disabled(isAnyGenerating)
+                    .disabled(isGenerating)
             }
             .frame(height: max(minHeight, min(textHeight, maxHeight)))
             .themedInput(isFocused: isFocused)
@@ -435,15 +438,9 @@ struct AutoResizingPromptInput: View {
                     // Short prompt button
                     Button(action: onSubmitShort) {
                         HStack(spacing: Theme.spacingXS) {
-                            if isGeneratingShort {
-                                ProgressView()
-                                    .controlSize(.mini)
-                                    .tint(Theme.accent)
-                            } else {
-                                Image(systemName: "bolt")
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                            Text(isGeneratingShort ? "Generating..." : "Short")
+                            Image(systemName: "bolt")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Short")
                                 .font(Theme.headlineFont(12))
                         }
                         .foregroundColor(Theme.accent)
@@ -459,23 +456,17 @@ struct AutoResizingPromptInput: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .disabled(!hasText || isGeneratingShort)
-                    .opacity(!hasText || isGeneratingShort ? 0.5 : 1)
+                    .disabled(isDisabled)
+                    .opacity(isDisabled ? 0.5 : 1)
                     .keyboardShortcut(.return, modifiers: .command)
                     .help("Generate a concise, focused prompt")
 
                     // Long prompt button
                     Button(action: onSubmitLong) {
                         HStack(spacing: Theme.spacingXS) {
-                            if isGeneratingLong {
-                                ProgressView()
-                                    .controlSize(.mini)
-                                    .tint(.white)
-                            } else {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                            Text(isGeneratingLong ? "Generating..." : "Long")
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Long")
                                 .font(Theme.headlineFont(12))
                         }
                         .foregroundColor(.white)
@@ -488,8 +479,8 @@ struct AutoResizingPromptInput: View {
                         .shadow(color: Theme.accentGlow, radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!hasText || isGeneratingLong)
-                    .opacity(!hasText || isGeneratingLong ? 0.5 : 1)
+                    .disabled(isDisabled)
+                    .opacity(isDisabled ? 0.5 : 1)
                     .keyboardShortcut(.return, modifiers: [.command, .shift])
                     .help("Generate a detailed, comprehensive prompt")
                 }
