@@ -62,7 +62,7 @@ class DataStore: ObservableObject {
         if let index = history.firstIndex(where: { $0.id == id }) {
             history[index].generationStatus = status
             if let error = error {
-                history[index].generationError = error
+                history[index].errorMessage = error
             }
             saveHistory()
         }
