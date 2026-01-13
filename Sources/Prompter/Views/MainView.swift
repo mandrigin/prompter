@@ -523,14 +523,12 @@ struct GeneratingView: View {
 
 // MARK: - Markdown Output View
 
+import MarkdownUI
+
 struct MarkdownOutputView: View {
     let content: String
 
     @State private var isCopied = false
-
-    private var attributedContent: AttributedString {
-        (try? AttributedString(markdown: content)) ?? AttributedString(content)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
@@ -542,26 +540,24 @@ struct MarkdownOutputView: View {
 
                 Spacer()
 
-                Button(action: copyToClipboard) {
+                Button(action: copyAllToClipboard) {
                     HStack(spacing: Theme.spacingXS) {
                         Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        Text(isCopied ? "Copied!" : "Copy")
+                        Text(isCopied ? "Copied!" : "Copy All")
                     }
                     .font(Theme.captionFont())
                     .foregroundColor(isCopied ? Theme.success : Theme.accent)
                 }
                 .buttonStyle(.plain)
-                .help("Copy to clipboard")
+                .help("Copy entire output to clipboard")
             }
 
-            // Content - expands to fill available space
+            // Content - MarkdownUI for proper code block rendering
             ScrollView {
-                Text(attributedContent)
-                    .font(Theme.bodyFont(14))
-                    .foregroundColor(Theme.textPrimary)
-                    .lineSpacing(5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Markdown(content)
+                    .markdownTheme(.royalVelvet)
                     .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(Theme.spacingM)
@@ -585,7 +581,7 @@ struct MarkdownOutputView: View {
         )
     }
 
-    private func copyToClipboard() {
+    private func copyAllToClipboard() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(content, forType: .string)
         isCopied = true
@@ -593,6 +589,144 @@ struct MarkdownOutputView: View {
             isCopied = false
         }
     }
+}
+
+// MARK: - Code Block with Copy Button
+
+struct CopyableCodeBlock: View {
+    let configuration: CodeBlockConfiguration
+
+    @State private var isCopied = false
+    @State private var isHovered = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with language and copy button
+            HStack {
+                if let language = configuration.language {
+                    Text(language)
+                        .font(Theme.captionFont(10))
+                        .foregroundColor(Theme.textTertiary)
+                        .textCase(.uppercase)
+                }
+
+                Spacer()
+
+                Button(action: copyCode) {
+                    HStack(spacing: 4) {
+                        Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                        Text(isCopied ? "Copied" : "Copy")
+                    }
+                    .font(Theme.captionFont(10))
+                    .foregroundColor(isCopied ? Theme.success : Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .opacity(isHovered || isCopied ? 1 : 0)
+            }
+            .padding(.horizontal, Theme.spacingM)
+            .padding(.vertical, Theme.spacingS)
+            .background(Theme.elevated)
+
+            // Code content
+            configuration.label
+                .markdownTextStyle {
+                    FontFamilyVariant(.monospaced)
+                    FontSize(13)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .padding(Theme.spacingM)
+        }
+        .background(Theme.card)
+        .cornerRadius(Theme.radiusS)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radiusS)
+                .stroke(isHovered ? Theme.accent.opacity(0.3) : Theme.border, lineWidth: 1)
+        )
+        .onHover { isHovered = $0 }
+    }
+
+    private func copyCode() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(configuration.content, forType: .string)
+        isCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            isCopied = false
+        }
+    }
+}
+
+// MARK: - Custom Markdown Theme
+
+extension MarkdownUI.Theme {
+    static let royalVelvet = MarkdownUI.Theme()
+        .text {
+            ForegroundColor(Theme.textPrimary)
+            FontSize(14)
+        }
+        .code {
+            FontFamilyVariant(.monospaced)
+            FontSize(13)
+            ForegroundColor(Theme.accentLight)
+            BackgroundColor(Theme.card)
+        }
+        .strong {
+            FontWeight(.semibold)
+        }
+        .emphasis {
+            FontStyle(.italic)
+        }
+        .link {
+            ForegroundColor(Theme.accent)
+        }
+        .codeBlock { configuration in
+            CopyableCodeBlock(configuration: configuration)
+                .markdownMargin(top: 8, bottom: 8)
+        }
+        .heading1 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.bold)
+                    FontSize(20)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .markdownMargin(top: 16, bottom: 8)
+        }
+        .heading2 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    FontSize(17)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .markdownMargin(top: 12, bottom: 6)
+        }
+        .heading3 { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    FontSize(15)
+                    ForegroundColor(Theme.textPrimary)
+                }
+                .markdownMargin(top: 10, bottom: 4)
+        }
+        .paragraph { configuration in
+            configuration.label
+                .markdownMargin(top: 0, bottom: 12)
+        }
+        .listItem { configuration in
+            configuration.label
+                .markdownMargin(top: 4, bottom: 4)
+        }
+        .blockquote { configuration in
+            configuration.label
+                .padding(.leading, Theme.spacingM)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Theme.accent.opacity(0.5))
+                        .frame(width: 3)
+                }
+                .markdownMargin(top: 8, bottom: 8)
+        }
 }
 
 // MARK: - Bottom Toolbar
