@@ -95,7 +95,7 @@ class DataStore: ObservableObject {
         if let index = history.firstIndex(where: { $0.id == id }) {
             history[index].generationStatus = status
             if let error = error {
-                history[index].errorMessage = error
+                history[index].generationError = error
             }
             saveHistory()
         }
@@ -108,13 +108,27 @@ class DataStore: ObservableObject {
 
     func completeGeneration(id: UUID, output: String) {
         if let index = history.firstIndex(where: { $0.id == id }) {
-            history[index].generatedOutput = output
+            // Add as a new version
+            let newVersion = PromptVersion(output: output)
+            history[index].versions.append(newVersion)
+            // Select the newest version
+            history[index].selectedVersionIndex = history[index].versions.count - 1
             history[index].generationStatus = .completed
-            history[index].errorMessage = nil
+            history[index].generationError = nil
+            // Keep generatedOutput in sync for backwards compatibility
+            history[index].generatedOutput = output
             saveHistory()
         }
         if generatingItemId == id {
             generatingItemId = nil
+        }
+    }
+
+    func selectVersion(id: UUID, versionIndex: Int) {
+        if let index = history.firstIndex(where: { $0.id == id }) {
+            guard versionIndex >= 0 && versionIndex < history[index].versions.count else { return }
+            history[index].selectedVersionIndex = versionIndex
+            saveHistory()
         }
     }
 

@@ -28,7 +28,7 @@ struct MainView: View {
 
     /// The output to display - either from selected history item or nothing
     private var displayedOutput: String? {
-        selectedItem?.generatedOutput
+        selectedItem?.currentOutput
     }
 
     var body: some View {
@@ -36,6 +36,7 @@ struct MainView: View {
             if showingHistory {
                 HistorySidebar(
                     history: dataStore.history,
+                    activeRequestIds: dataStore.generatingItemId.map { Set([$0]) } ?? Set(),
                     onSelect: { item in
                         selectHistoryItem(item)
                     },
@@ -50,6 +51,13 @@ struct MainView: View {
                     },
                     onUnarchive: { item in
                         dataStore.unarchiveHistoryItem(item)
+                    },
+                    onCreate: {
+                        selectedItemId = nil
+                        promptText = ""
+                    },
+                    onSelectVersion: { item, versionIndex in
+                        dataStore.selectVersion(id: item.id, versionIndex: versionIndex)
                     }
                 )
                 .frame(minWidth: 180, maxWidth: 240)
@@ -84,15 +92,15 @@ struct MainView: View {
                         } else if let item = selectedItem {
                             switch item.generationStatus {
                             case .completed:
-                                if let output = item.generatedOutput {
+                                if let output = item.currentOutput {
                                     MarkdownOutputView(content: output)
                                 }
                             case .failed:
                                 FailedGenerationView(
-                                    error: item.errorMessage ?? "Unknown error",
+                                    error: item.generationError ?? "Unknown error",
                                     onRetry: { retryGeneration(item: item) }
                                 )
-                            case .pending:
+                            case .pending, .cancelled, .none:
                                 // Show nothing or a prompt to generate
                                 EmptyView()
                             case .generating:

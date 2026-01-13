@@ -8,6 +8,7 @@ struct HistorySidebar: View {
     let onArchive: (PromptHistory) -> Void
     let onUnarchive: (PromptHistory) -> Void
     let onCreate: () -> Void
+    let onSelectVersion: (PromptHistory, Int) -> Void
 
     @State private var searchText: String = ""
     @State private var showArchived: Bool = false
@@ -112,7 +113,8 @@ struct HistorySidebar: View {
                                         onSelect: onSelect,
                                         onDelete: onDelete,
                                         onArchive: onArchive,
-                                        onUnarchive: onUnarchive
+                                        onUnarchive: onUnarchive,
+                                        onSelectVersion: onSelectVersion
                                     )
                                 }
                             }
@@ -128,7 +130,8 @@ struct HistorySidebar: View {
                                             onSelect: onSelect,
                                             onDelete: onDelete,
                                             onArchive: onArchive,
-                                            onUnarchive: onUnarchive
+                                            onUnarchive: onUnarchive,
+                                            onSelectVersion: onSelectVersion
                                         )
                                     }
                                 }
@@ -154,7 +157,8 @@ struct HistorySidebar: View {
                                 onSelect: onSelect,
                                 onDelete: onDelete,
                                 onArchive: onArchive,
-                                onUnarchive: onUnarchive
+                                onUnarchive: onUnarchive,
+                                onSelectVersion: onSelectVersion
                             )
                         }
                     }
@@ -224,8 +228,13 @@ struct HistoryRow: View {
     let onDelete: (PromptHistory) -> Void
     let onArchive: (PromptHistory) -> Void
     let onUnarchive: (PromptHistory) -> Void
+    let onSelectVersion: (PromptHistory, Int) -> Void
 
     @State private var isHovered = false
+
+    private var hasMultipleVersions: Bool {
+        item.versions.count > 1
+    }
 
     private var statusColor: Color {
         if isActivelyGenerating {
@@ -244,6 +253,43 @@ struct HistoryRow: View {
             // Legacy items without status - check if they have output
             return item.hasResult ? Theme.success : Theme.textTertiary
         }
+    }
+
+    private var versionSelector: some View {
+        HStack(spacing: 2) {
+            Button(action: {
+                let newIndex = max(0, item.selectedVersionIndex - 1)
+                onSelectVersion(item, newIndex)
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(item.selectedVersionIndex > 0 ? Theme.textSecondary : Theme.textTertiary.opacity(0.5))
+            }
+            .buttonStyle(.plain)
+            .disabled(item.selectedVersionIndex <= 0)
+
+            Text("v\(item.selectedVersionIndex + 1)/\(item.versions.count)")
+                .font(Theme.captionFont(9))
+                .foregroundColor(Theme.textSecondary)
+                .monospacedDigit()
+
+            Button(action: {
+                let newIndex = min(item.versions.count - 1, item.selectedVersionIndex + 1)
+                onSelectVersion(item, newIndex)
+            }) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(item.selectedVersionIndex < item.versions.count - 1 ? Theme.textSecondary : Theme.textTertiary.opacity(0.5))
+            }
+            .buttonStyle(.plain)
+            .disabled(item.selectedVersionIndex >= item.versions.count - 1)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Theme.card)
+        )
     }
 
     var body: some View {
@@ -278,9 +324,15 @@ struct HistoryRow: View {
                     }
                 }
 
-                Text(formatDate(item.timestamp))
-                    .font(Theme.captionFont(10))
-                    .foregroundColor(Theme.textTertiary)
+                HStack(spacing: Theme.spacingS) {
+                    Text(formatDate(item.timestamp))
+                        .font(Theme.captionFont(10))
+                        .foregroundColor(Theme.textTertiary)
+
+                    if hasMultipleVersions {
+                        versionSelector
+                    }
+                }
             }
 
             Spacer()
