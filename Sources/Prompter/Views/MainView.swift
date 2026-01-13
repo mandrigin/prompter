@@ -11,6 +11,7 @@ struct MainView: View {
     @State private var selectedRequestId: UUID? = nil
     @State private var showingErrorAlert: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var selectedVersionIndex: Int = 0
 
     private let promptService = PromptService()
 
@@ -75,6 +76,12 @@ struct MainView: View {
                             selectedId: selectedRequestId,
                             onSelect: { id in
                                 selectedRequestId = id
+                                // Reset to latest version when selecting a different request
+                                if let historyItem = dataStore.history.first(where: { $0.id == id }) {
+                                    selectedVersionIndex = max(0, historyItem.versions.count - 1)
+                                } else {
+                                    selectedVersionIndex = 0
+                                }
                             },
                             onCancel: cancelRequest
                         )
@@ -82,9 +89,15 @@ struct MainView: View {
 
                     // Output display area - fills remaining space
                     if let request = selectedRequest {
+                        let historyItem = dataStore.history.first { $0.id == request.id }
                         RequestOutputView(
                             request: request,
-                            onCancel: { cancelRequest(id: request.id) }
+                            historyItem: historyItem,
+                            selectedVersionIndex: selectedVersionIndex,
+                            onCancel: { cancelRequest(id: request.id) },
+                            onVersionChange: { index in
+                                selectedVersionIndex = index
+                            }
                         )
                         .frame(maxHeight: .infinity)
                     } else {
@@ -112,13 +125,23 @@ struct MainView: View {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
-        // Create history item
-        let historyItem = PromptHistory(prompt: trimmedPrompt)
-        dataStore.addHistoryItem(historyItem)
+        // Check if this prompt already exists in history
+        let existingItem = dataStore.findExistingPrompt(trimmedPrompt)
+        let historyId: UUID
+
+        if let existing = existingItem {
+            // Reuse existing history item - will add new version
+            historyId = existing.id
+        } else {
+            // Create new history item
+            let historyItem = PromptHistory(prompt: trimmedPrompt)
+            dataStore.addHistoryItem(historyItem)
+            historyId = historyItem.id
+        }
 
         // Create generation request
         var request = GenerationRequest(
-            id: historyItem.id,
+            id: historyId,
             inputPrompt: trimmedPrompt,
             systemPrompt: systemPrompt
         )
@@ -132,6 +155,7 @@ struct MainView: View {
         let requestId = request.id
         let inputPrompt = request.inputPrompt
         let currentSystemPrompt = request.systemPrompt
+        let isNewVersion = existingItem != nil
 
         let task = Task {
             do {
@@ -142,7 +166,13 @@ struct MainView: View {
                 if !Task.isCancelled {
                     await MainActor.run {
                         updateRequest(id: requestId, status: .completed, output: output)
-                        dataStore.updateHistoryOutput(id: requestId, output: output)
+                        if isNewVersion {
+                            // Add new version to existing item
+                            dataStore.addVersionToHistory(id: requestId, output: output)
+                        } else {
+                            // First version for new item
+                            dataStore.updateHistoryOutput(id: requestId, output: output)
+                        }
                     }
                 }
             } catch {
@@ -275,14 +305,28 @@ struct RequestChip: View {
 
 struct RequestOutputView: View {
     let request: GenerationRequest
+    let historyItem: PromptHistory?
+    let selectedVersionIndex: Int
     let onCancel: () -> Void
+    let onVersionChange: (Int) -> Void
 
     var body: some View {
         switch request.status {
         case .pending, .generating:
             GeneratingView(onCancel: onCancel)
         case .completed:
-            if let output = request.output {
+            if let history = historyItem, !history.versions.isEmpty {
+                // Show with version selector if we have history versions
+                let versionIndex = min(selectedVersionIndex, history.versions.count - 1)
+                let content = history.versions[versionIndex].output
+                MarkdownOutputView(
+                    content: content,
+                    versions: history.versions,
+                    currentVersionIndex: versionIndex,
+                    onVersionChange: onVersionChange
+                )
+            } else if let output = request.output {
+                // Fallback to request output
                 MarkdownOutputView(content: output)
             }
         case .failed:
@@ -527,8 +571,20 @@ import MarkdownUI
 
 struct MarkdownOutputView: View {
     let content: String
+    var versions: [GenerationVersion] = []
+    var currentVersionIndex: Int = 0
+    var onVersionChange: ((Int) -> Void)? = nil
 
     @State private var isCopied = false
+
+    private var hasMultipleVersions: Bool {
+        versions.count > 1
+    }
+
+    private var currentVersion: GenerationVersion? {
+        guard currentVersionIndex >= 0 && currentVersionIndex < versions.count else { return nil }
+        return versions[currentVersionIndex]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
@@ -540,16 +596,27 @@ struct MarkdownOutputView: View {
 
                 Spacer()
 
+                // Version selector (only show if multiple versions)
+                if hasMultipleVersions {
+                    VersionSelector(
+                        versions: versions,
+                        currentIndex: currentVersionIndex,
+                        onSelect: { index in
+                            onVersionChange?(index)
+                        }
+                    )
+                }
+
                 Button(action: copyAllToClipboard) {
                     HStack(spacing: Theme.spacingXS) {
                         Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        Text(isCopied ? "Copied!" : "Copy All")
+                        Text(isCopied ? "Copied!" : "Copy")
                     }
                     .font(Theme.captionFont())
                     .foregroundColor(isCopied ? Theme.success : Theme.accent)
                 }
                 .buttonStyle(.plain)
-                .help("Copy entire output to clipboard")
+                .help("Copy to clipboard")
             }
 
             // Content - MarkdownUI for proper code block rendering
@@ -588,6 +655,59 @@ struct MarkdownOutputView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             isCopied = false
         }
+    }
+}
+
+// MARK: - Version Selector
+
+struct VersionSelector: View {
+    let versions: [GenerationVersion]
+    let currentIndex: Int
+    let onSelect: (Int) -> Void
+
+    @State private var isExpanded = false
+
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(Array(versions.enumerated()), id: \.offset) { index, version in
+                Button(action: { onSelect(index) }) {
+                    HStack {
+                        Text("v\(index)")
+                            .fontWeight(index == currentIndex ? .semibold : .regular)
+                        Text("•")
+                            .foregroundColor(Theme.textTertiary)
+                        Text(dateFormatter.string(from: version.timestamp))
+                            .foregroundColor(Theme.textSecondary)
+                        if index == currentIndex {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: Theme.spacingXS) {
+                Text("v\(currentIndex)")
+                    .font(Theme.captionFont())
+                    .foregroundColor(Theme.accent)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(Theme.accent)
+            }
+            .padding(.horizontal, Theme.spacingS)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.radiusS)
+                    .fill(Theme.accent.opacity(0.15))
+            )
+        }
+        .menuStyle(.borderlessButton)
     }
 }
 
