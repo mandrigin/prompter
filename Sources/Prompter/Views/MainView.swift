@@ -66,9 +66,10 @@ struct MainView: View {
                         VStack(spacing: 8) {
                             ProgressView()
                                 .controlSize(.regular)
+                                .tint(Theme.accent)
                             Text("Generating variants...")
                                 .font(.system(size: 12))
-                                .foregroundColor(.secondary)
+                                .foregroundColor(Theme.textSecondary)
 
                             Spacer()
 
@@ -77,12 +78,16 @@ struct MainView: View {
                                     .font(.system(size: 11))
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Theme.textTertiary)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
-                        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                        .background(Theme.card.opacity(0.5))
                         .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Theme.border, lineWidth: 1)
+                        )
                     } else if let variants = generatedVariants {
                         OutputView(variants: variants, selectedMode: selectedMode)
                         VariantsView(variants: variants, selectedMode: $selectedMode)
@@ -97,6 +102,7 @@ struct MainView: View {
             }
         }
         .frame(minWidth: 400, minHeight: 300)
+        .background(Theme.backgroundGradient)
         .alert("Generation Failed", isPresented: $showingErrorAlert) {
             Button("Dismiss", role: .cancel) {
                 generationError = nil
@@ -169,7 +175,7 @@ struct ModeTabBar: View {
                 )
             }
         }
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Theme.surface)
     }
 }
 
@@ -178,15 +184,23 @@ struct ModeTab: View {
     let isSelected: Bool
     let action: () -> Void
 
+    private var modeColor: Color {
+        switch mode {
+        case .primary: return Theme.modePrimary
+        case .strict: return Theme.modeStrict
+        case .exploratory: return Theme.modeExploratory
+        }
+    }
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Text(mode.rawValue)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                    .foregroundColor(isSelected ? modeColor : Theme.textSecondary)
 
                 Rectangle()
-                    .fill(isSelected ? Color.accentColor : Color.clear)
+                    .fill(isSelected ? modeColor : Color.clear)
                     .frame(height: 2)
             }
             .padding(.horizontal, 16)
@@ -209,10 +223,15 @@ struct TemplatePicker: View {
                         Button(action: { onSelect(template) }) {
                             Text(template.name)
                                 .font(.system(size: 11))
+                                .foregroundColor(Theme.textPrimary)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
-                                .background(Color(NSColor.controlBackgroundColor))
+                                .background(Theme.card)
                                 .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Theme.border, lineWidth: 1)
+                                )
                         }
                         .buttonStyle(.plain)
                         .help(template.content)
@@ -229,25 +248,39 @@ struct PromptInputField: View {
     var isGenerating: Bool = false
     let onSubmit: () -> Void
 
+    private var modeColor: Color {
+        switch mode {
+        case .primary: return Theme.modePrimary
+        case .strict: return Theme.modeStrict
+        case .exploratory: return Theme.modeExploratory
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $text)
                 .font(.system(size: 13))
+                .foregroundColor(Theme.textPrimary)
                 .frame(minHeight: 80, maxHeight: 150)
                 .scrollContentBackground(.hidden)
                 .padding(8)
-                .background(Color(NSColor.textBackgroundColor))
+                .background(Theme.card)
                 .cornerRadius(8)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                        .stroke(modeColor.opacity(0.5), lineWidth: 1)
                 )
                 .disabled(isGenerating)
 
             HStack {
-                Text("\(mode.rawValue) mode")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(modeColor)
+                        .frame(width: 6, height: 6)
+                    Text("\(mode.rawValue) mode")
+                        .font(.system(size: 10))
+                        .foregroundColor(Theme.textSecondary)
+                }
 
                 Spacer()
 
@@ -259,6 +292,7 @@ struct PromptInputField: View {
                     .font(.system(size: 12))
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(Theme.accent)
                 .controlSize(.small)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
                 .keyboardShortcut(.return, modifiers: .command)
@@ -274,6 +308,7 @@ struct BottomToolbar: View {
         HStack {
             Button(action: { showingHistory.toggle() }) {
                 Image(systemName: showingHistory ? "sidebar.left" : "sidebar.leading")
+                    .foregroundColor(Theme.textSecondary)
             }
             .buttonStyle(.plain)
             .help(showingHistory ? "Hide history" : "Show history")
@@ -282,19 +317,21 @@ struct BottomToolbar: View {
 
             SettingsLink {
                 Image(systemName: "gear")
+                    .foregroundColor(Theme.textSecondary)
             }
             .buttonStyle(.plain)
             .help("Settings")
 
             Button(action: { NSApplication.shared.terminate(nil) }) {
                 Image(systemName: "power")
+                    .foregroundColor(Theme.textSecondary)
             }
             .buttonStyle(.plain)
             .help("Quit Prompter")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Theme.surface)
     }
 }
 
@@ -306,7 +343,7 @@ struct VariantsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Generated Variants")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary)
+                .foregroundColor(Theme.textPrimary)
 
             ScrollView {
                 VStack(spacing: 10) {
@@ -314,7 +351,7 @@ struct VariantsView: View {
                         title: "Primary",
                         content: variants.primary,
                         isSelected: selectedMode == .primary,
-                        color: .blue,
+                        color: Theme.modePrimary,
                         onSelect: { selectedMode = .primary }
                     )
 
@@ -322,7 +359,7 @@ struct VariantsView: View {
                         title: "Strict",
                         content: variants.strict,
                         isSelected: selectedMode == .strict,
-                        color: .orange,
+                        color: Theme.modeStrict,
                         onSelect: { selectedMode = .strict }
                     )
 
@@ -330,7 +367,7 @@ struct VariantsView: View {
                         title: "Exploratory",
                         content: variants.exploratory,
                         isSelected: selectedMode == .exploratory,
-                        color: .purple,
+                        color: Theme.modeExploratory,
                         onSelect: { selectedMode = .exploratory }
                     )
                 }
@@ -365,6 +402,7 @@ struct VariantCard: View {
                 Button(action: copyToClipboard) {
                     Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 10))
+                        .foregroundColor(isCopied ? Theme.success : Theme.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .help("Copy to clipboard")
@@ -372,18 +410,18 @@ struct VariantCard: View {
 
             Text(content)
                 .font(.system(size: 12))
-                .foregroundColor(.primary)
+                .foregroundColor(Theme.textPrimary)
                 .lineLimit(4)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? color.opacity(0.1) : Color(NSColor.controlBackgroundColor))
+                .fill(isSelected ? color.opacity(0.15) : Theme.card)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? color : Color(NSColor.separatorColor), lineWidth: isSelected ? 2 : 1)
+                .stroke(isSelected ? color : Theme.border, lineWidth: isSelected ? 2 : 1)
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
@@ -419,11 +457,11 @@ struct OutputView: View {
     private var modeColor: Color {
         switch selectedMode {
         case .primary:
-            return .blue
+            return Theme.modePrimary
         case .strict:
-            return .orange
+            return Theme.modeStrict
         case .exploratory:
-            return .purple
+            return Theme.modeExploratory
         }
     }
 
@@ -436,7 +474,7 @@ struct OutputView: View {
 
                 Text("\(selectedMode.rawValue) Output")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .foregroundColor(Theme.textPrimary)
 
                 Spacer()
 
@@ -446,7 +484,7 @@ struct OutputView: View {
                         Text(isCopied ? "Copied!" : "Copy")
                     }
                     .font(.system(size: 11))
-                    .foregroundColor(isCopied ? .green : .accentColor)
+                    .foregroundColor(isCopied ? Theme.success : Theme.accent)
                 }
                 .buttonStyle(.plain)
                 .help("Copy to clipboard")
@@ -455,13 +493,13 @@ struct OutputView: View {
             ScrollView {
                 Text(currentVariant)
                     .font(.system(size: 13))
-                    .foregroundColor(.primary)
+                    .foregroundColor(Theme.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
             .frame(minHeight: 60, maxHeight: 120)
             .padding(10)
-            .background(Color(NSColor.textBackgroundColor))
+            .background(Theme.card)
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
@@ -469,8 +507,12 @@ struct OutputView: View {
             )
         }
         .padding(12)
-        .background(modeColor.opacity(0.05))
+        .background(modeColor.opacity(0.1))
         .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Theme.border, lineWidth: 1)
+        )
     }
 
     private func copyToClipboard() {

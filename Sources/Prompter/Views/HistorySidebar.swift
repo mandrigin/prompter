@@ -51,15 +51,18 @@ struct HistorySidebar: View {
             // Search field
             HStack {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Theme.textTertiary)
                 TextField("Search", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 11))
+                    .foregroundColor(Theme.textPrimary)
             }
             .padding(8)
-            .background(Color(NSColor.controlBackgroundColor))
+            .background(Theme.surface)
 
-            Divider()
+            Rectangle()
+                .fill(Theme.separator)
+                .frame(height: 1)
 
             // History list
             if !searchText.isEmpty {
@@ -69,7 +72,9 @@ struct HistorySidebar: View {
                 } else {
                     List {
                         ForEach(groupItems(searchResults), id: \.0) { section, items in
-                            Section(header: Text(section).font(.system(size: 10, weight: .semibold))) {
+                            Section(header: Text(section)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Theme.textTertiary)) {
                                 ForEach(items) { item in
                                     HistoryRow(
                                         item: item,
@@ -83,6 +88,7 @@ struct HistorySidebar: View {
                         }
                     }
                     .listStyle(.sidebar)
+                    .scrollContentBackground(.hidden)
                 }
             } else if activeHistory.isEmpty && archivedHistory.isEmpty {
                 emptyState(message: "No history")
@@ -90,7 +96,9 @@ struct HistorySidebar: View {
                 List {
                     // Active items
                     ForEach(groupItems(activeHistory), id: \.0) { section, items in
-                        Section(header: Text(section).font(.system(size: 10, weight: .semibold))) {
+                        Section(header: Text(section)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Theme.textTertiary)) {
                             ForEach(items) { item in
                                 HistoryRow(
                                     item: item,
@@ -121,9 +129,10 @@ struct HistorySidebar: View {
                     }
                 }
                 .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
             }
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(Theme.sidebarGradient)
     }
 
     private var archivedSectionHeader: some View {
@@ -139,7 +148,7 @@ struct HistorySidebar: View {
             }
             .buttonStyle(.plain)
         }
-        .foregroundColor(.secondary)
+        .foregroundColor(Theme.textTertiary)
     }
 
     private func emptyState(message: String) -> some View {
@@ -147,7 +156,7 @@ struct HistorySidebar: View {
             Spacer()
             Text(message)
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundColor(Theme.textTertiary)
             Spacer()
         }
     }
@@ -162,6 +171,14 @@ struct HistoryRow: View {
 
     @State private var isHovering = false
 
+    private var modeColor: Color {
+        switch item.mode {
+        case .primary: return Theme.modePrimary
+        case .strict: return Theme.modeStrict
+        case .exploratory: return Theme.modeExploratory
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
@@ -169,18 +186,19 @@ struct HistoryRow: View {
                     Text(item.prompt)
                         .font(.system(size: 11))
                         .lineLimit(2)
-                        .foregroundColor(.primary)
+                        .foregroundColor(Theme.textPrimary)
 
                     if item.isArchived {
                         Image(systemName: "archivebox")
                             .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Theme.textTertiary)
                     }
                 }
 
                 HStack(spacing: 4) {
                     Text(item.mode.rawValue)
                         .font(.system(size: 9))
+                        .foregroundColor(modeColor)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(modeColor.opacity(0.2))
@@ -188,7 +206,7 @@ struct HistoryRow: View {
 
                     Text(formatDate(item.timestamp))
                         .font(.system(size: 9))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.textTertiary)
                 }
             }
 
@@ -197,7 +215,7 @@ struct HistoryRow: View {
             if isHovering {
                 Button(action: { onDelete(item) }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.textSecondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -228,14 +246,6 @@ struct HistoryRow: View {
             Button(role: .destructive, action: { onDelete(item) }) {
                 Label("Delete", systemImage: "trash")
             }
-        }
-    }
-
-    private var modeColor: Color {
-        switch item.mode {
-        case .primary: return .blue
-        case .strict: return .orange
-        case .exploratory: return .purple
         }
     }
 
