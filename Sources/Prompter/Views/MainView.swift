@@ -409,13 +409,15 @@ struct AutoResizingPromptInput: View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
             // Auto-resizing text input
             ZStack(alignment: .topLeading) {
-                // Hidden text for measuring - must match TextEditor's layout
-                Text(text.isEmpty ? " " : text)
+                // Hidden text for measuring - add trailing newline to match TextEditor cursor space
+                // TextEditor has ~10pt extra internal padding vs Text
+                Text(text.isEmpty ? " " : text + "\n")
                     .font(Theme.bodyFont(14))
                     .lineSpacing(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(Theme.spacingM)
+                    .padding(.vertical, 5) // Account for TextEditor internal padding
                     .opacity(0)
                     .background(
                         GeometryReader { geo in
@@ -425,6 +427,7 @@ struct AutoResizingPromptInput: View {
                             )
                         }
                     )
+                    .id(text) // Force re-measurement on text change
 
                 // Actual text editor
                 TextEditor(text: $text)
