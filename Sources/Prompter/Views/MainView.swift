@@ -35,6 +35,7 @@ struct MainView: View {
                     }
                 )
                 .frame(minWidth: 150, maxWidth: 200)
+                .transition(.move(edge: .leading).combined(with: .opacity))
             }
 
             VStack(spacing: 0) {
@@ -83,12 +84,23 @@ struct MainView: View {
                         .padding(.vertical, 24)
                         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
                         .cornerRadius(8)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     } else if let variants = generatedVariants {
                         OutputView(variants: variants, selectedMode: selectedMode)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                removal: .opacity
+                            ))
                         VariantsView(variants: variants, selectedMode: $selectedMode)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                removal: .opacity
+                            ))
                     }
                 }
                 .padding()
+                .animation(.easeInOut(duration: 0.3), value: isGenerating)
+                .animation(.easeInOut(duration: 0.3), value: generatedVariants != nil)
 
                 Spacer()
 
@@ -97,6 +109,7 @@ struct MainView: View {
             }
         }
         .frame(minWidth: 400, minHeight: 300)
+        .animation(.easeInOut(duration: 0.25), value: showingHistory)
         .alert("Generation Failed", isPresented: $showingErrorAlert) {
             Button("Dismiss", role: .cancel) {
                 generationError = nil
@@ -165,7 +178,11 @@ struct ModeTabBar: View {
                 ModeTab(
                     mode: mode,
                     isSelected: selectedMode == mode,
-                    action: { selectedMode = mode }
+                    action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedMode = mode
+                        }
+                    }
                 )
             }
         }
@@ -194,6 +211,7 @@ struct ModeTab: View {
         }
         .buttonStyle(.plain)
         .help(mode.description)
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 }
 
@@ -387,14 +405,20 @@ struct VariantCard: View {
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .animation(.easeInOut(duration: 0.15), value: isCopied)
     }
 
     private func copyToClipboard() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(content, forType: .string)
-        isCopied = true
+        withAnimation {
+            isCopied = true
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            isCopied = false
+            withAnimation {
+                isCopied = false
+            }
         }
     }
 }
@@ -471,14 +495,20 @@ struct OutputView: View {
         .padding(12)
         .background(modeColor.opacity(0.05))
         .cornerRadius(10)
+        .animation(.easeInOut(duration: 0.2), value: selectedMode)
+        .animation(.easeInOut(duration: 0.15), value: isCopied)
     }
 
     private func copyToClipboard() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(currentVariant, forType: .string)
-        isCopied = true
+        withAnimation {
+            isCopied = true
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            isCopied = false
+            withAnimation {
+                isCopied = false
+            }
         }
     }
 }
