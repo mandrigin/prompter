@@ -88,16 +88,17 @@ struct SettingsTabButton: View {
     }
 }
 
-/// Default system prompt used for generating prompt variants
+/// Default system prompt used for generating improved prompts
 let defaultSystemPrompt = """
 You are a prompt engineering assistant. Given a user's rough idea or description, \
-generate three versions of an improved prompt:
+generate an improved, well-structured prompt.
 
-1. **primary**: A well-structured, balanced prompt suitable for general use
-2. **strict**: A more constrained version with explicit boundaries and limitations
-3. **exploratory**: A more open-ended version that encourages creative exploration
+Format your response in markdown with:
+- A clear, actionable prompt
+- Key considerations or context if relevant
+- Example usage if helpful
 
-Return ONLY valid JSON matching the schema. No explanations or markdown.
+Be concise but thorough. Focus on making the prompt effective for AI assistants.
 """
 
 struct GeneralSettingsView: View {
@@ -126,7 +127,7 @@ struct GeneralSettingsView: View {
                     )
 
                 HStack {
-                    Text("Customize the instructions sent to Claude when generating variants")
+                    Text("Customize the instructions sent to Claude when generating prompts")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
 
@@ -237,7 +238,7 @@ struct HotkeySettingsView: View {
             }
 
             Section("In App") {
-                LabeledContent("Send Prompt") {
+                LabeledContent("Generate Prompt") {
                     HotkeyField(hotkey: $sendHotkey)
                 }
             }
@@ -282,13 +283,9 @@ struct TemplateSettingsView: View {
         HSplitView {
             // Template list
             List(selection: $selectedTemplate) {
-                ForEach(PromptMode.allCases, id: \.self) { mode in
-                    Section(header: Text(mode.rawValue)) {
-                        ForEach(dataStore.templatesForMode(mode)) { template in
-                            Text(template.name)
-                                .tag(template)
-                        }
-                    }
+                ForEach(dataStore.sortedTemplates) { template in
+                    Text(template.name)
+                        .tag(template)
                 }
             }
             .listStyle(.sidebar)
@@ -323,8 +320,8 @@ struct TemplateSettingsView: View {
             }
         }
         .sheet(isPresented: $showingAddTemplate) {
-            AddTemplateView { name, content, mode in
-                let template = CustomTemplate(name: name, content: content, mode: mode, sortOrder: dataStore.templates.count)
+            AddTemplateView { name, content in
+                let template = CustomTemplate(name: name, content: content, sortOrder: dataStore.templates.count)
                 dataStore.addTemplate(template)
             }
         }
@@ -338,7 +335,6 @@ struct TemplateEditor: View {
 
     @State private var name: String
     @State private var content: String
-    @State private var mode: PromptMode
 
     init(template: CustomTemplate, onUpdate: @escaping (CustomTemplate) -> Void, onDelete: @escaping () -> Void) {
         self.template = template
@@ -346,7 +342,6 @@ struct TemplateEditor: View {
         self.onDelete = onDelete
         self._name = State(initialValue: template.name)
         self._content = State(initialValue: template.content)
-        self._mode = State(initialValue: template.mode)
     }
 
     var body: some View {
@@ -355,15 +350,6 @@ struct TemplateEditor: View {
                 .onChange(of: name) { _, newValue in
                     updateTemplate(name: newValue)
                 }
-
-            Picker("Mode", selection: $mode) {
-                ForEach(PromptMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .onChange(of: mode) { _, newValue in
-                updateTemplate(mode: newValue)
-            }
 
             LabeledContent("Content") {
                 TextEditor(text: $content)
@@ -381,11 +367,10 @@ struct TemplateEditor: View {
         .padding()
     }
 
-    private func updateTemplate(name: String? = nil, content: String? = nil, mode: PromptMode? = nil) {
+    private func updateTemplate(name: String? = nil, content: String? = nil) {
         var updated = template
         if let name = name { updated.name = name }
         if let content = content { updated.content = content }
-        if let mode = mode { updated.mode = mode }
         onUpdate(updated)
     }
 }
@@ -394,9 +379,8 @@ struct AddTemplateView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var content = ""
-    @State private var mode: PromptMode = .primary
 
-    let onCreate: (String, String, PromptMode) -> Void
+    let onCreate: (String, String) -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -405,12 +389,6 @@ struct AddTemplateView: View {
 
             Form {
                 TextField("Name", text: $name)
-
-                Picker("Mode", selection: $mode) {
-                    ForEach(PromptMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
 
                 LabeledContent("Content") {
                     TextEditor(text: $content)
@@ -427,14 +405,13 @@ struct AddTemplateView: View {
                 Spacer()
 
                 Button("Create") {
-                    onCreate(name, content, mode)
+                    onCreate(name, content)
                     dismiss()
                 }
                 .disabled(name.isEmpty || content.isEmpty)
             }
         }
         .padding()
-        .frame(width: 350, height: 300)
+        .frame(width: 350, height: 280)
     }
 }
-

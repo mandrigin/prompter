@@ -62,6 +62,10 @@ class DataStore: ObservableObject {
 
     // MARK: - Template Management
 
+    var sortedTemplates: [CustomTemplate] {
+        templates.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
     func addTemplate(_ template: CustomTemplate) {
         templates.append(template)
         saveTemplates()
@@ -77,10 +81,6 @@ class DataStore: ObservableObject {
     func deleteTemplate(_ template: CustomTemplate) {
         templates.removeAll { $0.id == template.id }
         saveTemplates()
-    }
-
-    func templatesForMode(_ mode: PromptMode) -> [CustomTemplate] {
-        templates.filter { $0.mode == mode }.sorted { $0.sortOrder < $1.sortOrder }
     }
 
     private func loadTemplates() {

@@ -178,18 +178,9 @@ struct HistoryRow: View {
                     }
                 }
 
-                HStack(spacing: 4) {
-                    Text(item.mode.rawValue)
-                        .font(.system(size: 9))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(modeColor.opacity(0.2))
-                        .cornerRadius(2)
-
-                    Text(formatDate(item.timestamp))
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
+                Text(formatDate(item.timestamp))
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
             }
 
             Spacer()
@@ -228,14 +219,6 @@ struct HistoryRow: View {
             Button(role: .destructive, action: { onDelete(item) }) {
                 Label("Delete", systemImage: "trash")
             }
-        }
-    }
-
-    private var modeColor: Color {
-        switch item.mode {
-        case .primary: return .blue
-        case .strict: return .orange
-        case .exploratory: return .purple
         }
     }
 
