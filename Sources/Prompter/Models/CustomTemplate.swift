@@ -26,6 +26,8 @@ struct DefaultTemplates {
         ("Architecture", "Suggest architectural improvements for:"),
         ("Best Practices", "What are the best practices for:"),
         ("Write Tests", "Write unit tests for this code:"),
+        ("Business Research", "Research and analyze the following business topic, including market trends, competitors, and strategic insights:"),
+        ("Technical Research", "Research the following technical topic, including documentation, implementation patterns, and best practices:"),
     ]
 
     static func createDefaults() -> [CustomTemplate] {

@@ -322,6 +322,10 @@ struct TemplateChip: View {
             return "star"
         case let name where name.contains("test"):
             return "checkmark.seal"
+        case let name where name.contains("business"):
+            return "chart.line.uptrend.xyaxis"
+        case let name where name.contains("technical"):
+            return "doc.text.magnifyingglass"
         default:
             return "sparkles"
         }
