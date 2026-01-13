@@ -4,19 +4,31 @@ struct HistorySidebar: View {
     let history: [PromptHistory]
     let onSelect: (PromptHistory) -> Void
     let onDelete: (PromptHistory) -> Void
+    let onArchive: (PromptHistory) -> Void
+    let onUnarchive: (PromptHistory) -> Void
 
     @State private var searchText: String = ""
+    @State private var showArchived: Bool = false
 
-    private var filteredHistory: [PromptHistory] {
+    // Search searches ALL items (archived and active)
+    private var searchResults: [PromptHistory] {
         if searchText.isEmpty {
-            return history
+            return []
         }
         return history.filter { $0.prompt.localizedCaseInsensitiveContains(searchText) }
     }
 
-    private var groupedHistory: [(String, [PromptHistory])] {
+    private var activeHistory: [PromptHistory] {
+        history.filter { !$0.isArchived }
+    }
+
+    private var archivedHistory: [PromptHistory] {
+        history.filter { $0.isArchived }
+    }
+
+    private func groupItems(_ items: [PromptHistory]) -> [(String, [PromptHistory])] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: filteredHistory) { item -> String in
+        let grouped = Dictionary(grouping: items) { item -> String in
             if calendar.isDateInToday(item.timestamp) {
                 return "Today"
             } else if calendar.isDateInYesterday(item.timestamp) {
@@ -50,20 +62,60 @@ struct HistorySidebar: View {
             Divider()
 
             // History list
-            if filteredHistory.isEmpty {
-                VStack {
-                    Spacer()
-                    Text("No history")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Spacer()
+            if !searchText.isEmpty {
+                // Search mode: show ALL matching items (archived and active)
+                if searchResults.isEmpty {
+                    emptyState(message: "No results")
+                } else {
+                    List {
+                        ForEach(groupItems(searchResults), id: \.0) { section, items in
+                            Section(header: Text(section).font(.system(size: 10, weight: .semibold))) {
+                                ForEach(items) { item in
+                                    HistoryRow(
+                                        item: item,
+                                        onSelect: onSelect,
+                                        onDelete: onDelete,
+                                        onArchive: onArchive,
+                                        onUnarchive: onUnarchive
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.sidebar)
                 }
+            } else if activeHistory.isEmpty && archivedHistory.isEmpty {
+                emptyState(message: "No history")
             } else {
                 List {
-                    ForEach(groupedHistory, id: \.0) { section, items in
+                    // Active items
+                    ForEach(groupItems(activeHistory), id: \.0) { section, items in
                         Section(header: Text(section).font(.system(size: 10, weight: .semibold))) {
                             ForEach(items) { item in
-                                HistoryRow(item: item, onSelect: onSelect, onDelete: onDelete)
+                                HistoryRow(
+                                    item: item,
+                                    onSelect: onSelect,
+                                    onDelete: onDelete,
+                                    onArchive: onArchive,
+                                    onUnarchive: onUnarchive
+                                )
+                            }
+                        }
+                    }
+
+                    // Archived section
+                    if !archivedHistory.isEmpty {
+                        Section(header: archivedSectionHeader) {
+                            if showArchived {
+                                ForEach(archivedHistory) { item in
+                                    HistoryRow(
+                                        item: item,
+                                        onSelect: onSelect,
+                                        onDelete: onDelete,
+                                        onArchive: onArchive,
+                                        onUnarchive: onUnarchive
+                                    )
+                                }
                             }
                         }
                     }
@@ -73,22 +125,58 @@ struct HistorySidebar: View {
         }
         .background(Color(NSColor.windowBackgroundColor))
     }
+
+    private var archivedSectionHeader: some View {
+        HStack {
+            Image(systemName: "archivebox")
+                .font(.system(size: 9))
+            Text("Archived (\(archivedHistory.count))")
+                .font(.system(size: 10, weight: .semibold))
+            Spacer()
+            Button(action: { showArchived.toggle() }) {
+                Image(systemName: showArchived ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9))
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundColor(.secondary)
+    }
+
+    private func emptyState(message: String) -> some View {
+        VStack {
+            Spacer()
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+    }
 }
 
 struct HistoryRow: View {
     let item: PromptHistory
     let onSelect: (PromptHistory) -> Void
     let onDelete: (PromptHistory) -> Void
+    let onArchive: (PromptHistory) -> Void
+    let onUnarchive: (PromptHistory) -> Void
 
     @State private var isHovering = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.prompt)
-                    .font(.system(size: 11))
-                    .lineLimit(2)
-                    .foregroundColor(.primary)
+                HStack(spacing: 4) {
+                    Text(item.prompt)
+                        .font(.system(size: 11))
+                        .lineLimit(2)
+                        .foregroundColor(.primary)
+
+                    if item.isArchived {
+                        Image(systemName: "archivebox")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                }
 
                 HStack(spacing: 4) {
                     Text(item.mode.rawValue)
@@ -118,6 +206,29 @@ struct HistoryRow: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture { onSelect(item) }
+        .contextMenu {
+            Button(action: { onSelect(item) }) {
+                Label("Use Prompt", systemImage: "text.cursor")
+            }
+
+            Divider()
+
+            if item.isArchived {
+                Button(action: { onUnarchive(item) }) {
+                    Label("Unarchive", systemImage: "tray.and.arrow.up")
+                }
+            } else {
+                Button(action: { onArchive(item) }) {
+                    Label("Archive", systemImage: "archivebox")
+                }
+            }
+
+            Divider()
+
+            Button(role: .destructive, action: { onDelete(item) }) {
+                Label("Delete", systemImage: "trash")
+            }
+        }
     }
 
     private var modeColor: Color {
