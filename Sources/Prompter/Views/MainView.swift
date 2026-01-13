@@ -26,6 +26,12 @@ struct MainView: View {
                     },
                     onDelete: { item in
                         dataStore.deleteHistoryItem(item)
+                    },
+                    onArchive: { item in
+                        dataStore.archiveHistoryItem(item)
+                    },
+                    onUnarchive: { item in
+                        dataStore.unarchiveHistoryItem(item)
                     }
                 )
                 .frame(minWidth: 150, maxWidth: 200)

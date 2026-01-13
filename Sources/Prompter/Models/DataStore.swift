@@ -28,6 +28,20 @@ class DataStore: ObservableObject {
         saveHistory()
     }
 
+    func archiveHistoryItem(_ item: PromptHistory) {
+        if let index = history.firstIndex(where: { $0.id == item.id }) {
+            history[index].isArchived = true
+            saveHistory()
+        }
+    }
+
+    func unarchiveHistoryItem(_ item: PromptHistory) {
+        if let index = history.firstIndex(where: { $0.id == item.id }) {
+            history[index].isArchived = false
+            saveHistory()
+        }
+    }
+
     func clearHistory() {
         history.removeAll()
         saveHistory()

@@ -6,13 +6,15 @@ struct PromptHistory: Codable, Identifiable, Equatable {
     var mode: PromptMode
     var timestamp: Date
     var isFavorite: Bool
+    var isArchived: Bool
 
-    init(id: UUID = UUID(), prompt: String, mode: PromptMode, timestamp: Date = Date(), isFavorite: Bool = false) {
+    init(id: UUID = UUID(), prompt: String, mode: PromptMode, timestamp: Date = Date(), isFavorite: Bool = false, isArchived: Bool = false) {
         self.id = id
         self.prompt = prompt
         self.mode = mode
         self.timestamp = timestamp
         self.isFavorite = isFavorite
+        self.isArchived = isArchived
     }
 }
 
