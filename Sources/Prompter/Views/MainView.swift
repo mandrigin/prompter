@@ -1,4 +1,5 @@
 import SwiftUI
+import MarkdownUI
 
 struct MainView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -6,23 +7,28 @@ struct MainView: View {
 
     @State private var promptText: String = ""
     @State private var showingHistory: Bool = true
-    @State private var activeRequests: [GenerationRequest] = []
-    @State private var generationTasks: [UUID: Task<Void, Never>] = [:]
-    @State private var selectedRequestId: UUID? = nil
+    @State private var selectedItemId: UUID? = nil
+    @State private var generationTask: Task<Void, Never>? = nil
     @State private var showingErrorAlert: Bool = false
     @State private var errorMessage: String? = nil
 
     private let promptService = PromptService()
 
-    // Currently selected request (if any)
-    private var selectedRequest: GenerationRequest? {
-        guard let id = selectedRequestId else { return nil }
-        return activeRequests.first { $0.id == id }
+    /// The currently selected history item
+    private var selectedItem: PromptHistory? {
+        guard let id = selectedItemId else { return nil }
+        return dataStore.historyItem(byId: id)
     }
 
-    // Check if any request is currently generating
-    private var hasActiveGeneration: Bool {
-        activeRequests.contains { $0.status == .generating || $0.status == .pending }
+    /// Whether the selected item is currently generating
+    private var isSelectedItemGenerating: Bool {
+        guard let id = selectedItemId else { return false }
+        return dataStore.isGenerating(id: id)
+    }
+
+    /// The output to display - either from selected history item or nothing
+    private var displayedOutput: String? {
+        selectedItem?.generatedOutput
     }
 
     var body: some View {
@@ -30,16 +36,13 @@ struct MainView: View {
             if showingHistory {
                 HistorySidebar(
                     history: dataStore.history,
-                    activeRequestIds: Set(activeRequests.map { $0.id }),
                     onSelect: { item in
-                        // If there's an active request for this item, select it to resume viewing
-                        if activeRequests.contains(where: { $0.id == item.id }) {
-                            selectedRequestId = item.id
-                        } else {
-                            promptText = item.prompt
-                        }
+                        selectHistoryItem(item)
                     },
                     onDelete: { item in
+                        if selectedItemId == item.id {
+                            selectedItemId = nil
+                        }
                         dataStore.deleteHistoryItem(item)
                     },
                     onArchive: { item in
@@ -47,10 +50,6 @@ struct MainView: View {
                     },
                     onUnarchive: { item in
                         dataStore.unarchiveHistoryItem(item)
-                    },
-                    onCreate: {
-                        promptText = ""
-                        selectedItemId = nil
                     }
                 )
                 .frame(minWidth: 180, maxWidth: 240)
@@ -61,47 +60,49 @@ struct MainView: View {
                 // Draggable title area
                 WindowDragArea()
 
-                // Main content with generous spacing
-                VStack(spacing: Theme.spacingL) {
-                    // Template picker
-                    TemplatePicker(
-                        templates: dataStore.sortedTemplates,
-                        onSelect: { template in
-                            promptText = template.content
+                // Global scrollable content area
+                ScrollView {
+                    VStack(spacing: Theme.spacingL) {
+                        // Template picker
+                        TemplatePicker(
+                            templates: dataStore.sortedTemplates,
+                            onSelect: { template in
+                                promptText = template.content
+                            }
+                        )
+
+                        // Prompt input with auto-resize
+                        AutoResizingPromptInput(
+                            text: $promptText,
+                            isGenerating: dataStore.generatingItemId != nil,
+                            onSubmit: submitPrompt
+                        )
+
+                        // Generated output display based on selected item state
+                        if isSelectedItemGenerating {
+                            GeneratingView(onCancel: cancelGeneration)
+                        } else if let item = selectedItem {
+                            switch item.generationStatus {
+                            case .completed:
+                                if let output = item.generatedOutput {
+                                    MarkdownOutputView(content: output)
+                                }
+                            case .failed:
+                                FailedGenerationView(
+                                    error: item.errorMessage ?? "Unknown error",
+                                    onRetry: { retryGeneration(item: item) }
+                                )
+                            case .pending:
+                                // Show nothing or a prompt to generate
+                                EmptyView()
+                            case .generating:
+                                // Should not happen if isSelectedItemGenerating is false
+                                GeneratingView(onCancel: cancelGeneration)
+                            }
                         }
-                    )
-
-                    // Prompt input - always enabled
-                    PromptInputField(
-                        text: $promptText,
-                        isGenerating: false,
-                        onSubmit: submitPrompt
-                    )
-
-                    // Active requests indicator
-                    if !activeRequests.isEmpty {
-                        ActiveRequestsBar(
-                            requests: activeRequests,
-                            selectedId: selectedRequestId,
-                            onSelect: { id in
-                                selectedRequestId = id
-                            },
-                            onCancel: cancelRequest
-                        )
                     }
-
-                    // Output display area - fills remaining space
-                    if let request = selectedRequest {
-                        RequestOutputView(
-                            request: request,
-                            onCancel: { cancelRequest(id: request.id) }
-                        )
-                        .frame(maxHeight: .infinity)
-                    } else {
-                        Spacer()
-                    }
+                    .padding(Theme.spacingXL)
                 }
-                .padding(Theme.spacingXL)
 
                 // Bottom toolbar
                 BottomToolbar(showingHistory: $showingHistory)
@@ -118,32 +119,31 @@ struct MainView: View {
         }
     }
 
+    private func selectHistoryItem(_ item: PromptHistory) {
+        // Select the item - don't cancel generation, allow viewing it
+        selectedItemId = item.id
+        promptText = item.prompt
+    }
+
     private func submitPrompt() {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
-        // Create history item with generating status
-        let historyItem = PromptHistory(prompt: trimmedPrompt, generationStatus: .generating)
+        // Create new history item with generating status
+        var historyItem = PromptHistory(prompt: trimmedPrompt)
+        historyItem.generationStatus = .generating
         dataStore.addHistoryItem(historyItem)
+        selectedItemId = historyItem.id
 
-        // Create generation request
-        var request = GenerationRequest(
-            id: historyItem.id,
-            inputPrompt: trimmedPrompt,
-            systemPrompt: systemPrompt
-        )
-        request.status = .generating
-
-        activeRequests.insert(request, at: 0)
-        selectedRequestId = request.id
+        let inputPrompt = trimmedPrompt
+        let currentSystemPrompt = systemPrompt
+        let itemId = historyItem.id
         promptText = ""
 
-        // Start generation task
-        let requestId = request.id
-        let inputPrompt = request.inputPrompt
-        let currentSystemPrompt = request.systemPrompt
+        // Mark as generating in datastore
+        dataStore.startGeneration(id: itemId)
 
-        let task = Task {
+        generationTask = Task {
             do {
                 let output = try await promptService.generatePrompt(
                     for: inputPrompt,
@@ -151,207 +151,62 @@ struct MainView: View {
                 )
                 if !Task.isCancelled {
                     await MainActor.run {
-                        updateRequest(id: requestId, status: .completed, output: output)
-                        dataStore.updateHistoryOutput(id: requestId, output: output)
-                        dataStore.updateHistoryStatus(id: requestId, status: .completed)
+                        dataStore.completeGeneration(id: itemId, output: output)
+                        generationTask = nil
                     }
                 }
             } catch {
                 if !Task.isCancelled {
                     await MainActor.run {
-                        updateRequest(id: requestId, status: .failed, error: error.localizedDescription)
-                        dataStore.updateHistoryStatus(id: requestId, status: .failed, error: error.localizedDescription)
+                        dataStore.failGeneration(id: itemId, error: error.localizedDescription)
+                        errorMessage = error.localizedDescription
+                        showingErrorAlert = true
+                        generationTask = nil
                     }
                 }
             }
-            _ = await MainActor.run {
-                generationTasks.removeValue(forKey: requestId)
-            }
-        }
-
-        generationTasks[requestId] = task
-    }
-
-    private func updateRequest(id: UUID, status: GenerationStatus, output: String? = nil, error: String? = nil) {
-        if let index = activeRequests.firstIndex(where: { $0.id == id }) {
-            activeRequests[index].status = status
-            if let output = output {
-                activeRequests[index].output = output
-            }
-            if let error = error {
-                activeRequests[index].error = error
-            }
         }
     }
 
-    private func cancelRequest(id: UUID) {
-        generationTasks[id]?.cancel()
-        generationTasks.removeValue(forKey: id)
-        updateRequest(id: id, status: .cancelled)
-        dataStore.updateHistoryStatus(id: id, status: .cancelled)
-    }
-}
+    private func retryGeneration(item: PromptHistory) {
+        let inputPrompt = item.prompt
+        let currentSystemPrompt = systemPrompt
+        let itemId = item.id
 
-// MARK: - Active Requests Bar
+        // Mark as generating
+        dataStore.startGeneration(id: itemId)
 
-struct ActiveRequestsBar: View {
-    let requests: [GenerationRequest]
-    let selectedId: UUID?
-    let onSelect: (UUID) -> Void
-    let onCancel: (UUID) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.spacingS) {
-                ForEach(requests) { request in
-                    RequestChip(
-                        request: request,
-                        isSelected: request.id == selectedId,
-                        onSelect: { onSelect(request.id) },
-                        onCancel: { onCancel(request.id) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-struct RequestChip: View {
-    let request: GenerationRequest
-    let isSelected: Bool
-    let onSelect: () -> Void
-    let onCancel: () -> Void
-
-    @State private var isHovered = false
-
-    private var statusColor: Color {
-        switch request.status {
-        case .pending, .generating:
-            return Theme.accent
-        case .completed:
-            return Theme.success
-        case .failed:
-            return Theme.error
-        case .cancelled:
-            return Theme.textTertiary
-        }
-    }
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: Theme.spacingXS) {
-                // Status indicator
-                Group {
-                    if request.status == .generating || request.status == .pending {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(Theme.accent)
-                    } else {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 6, height: 6)
+        generationTask = Task {
+            do {
+                let output = try await promptService.generatePrompt(
+                    for: inputPrompt,
+                    systemPrompt: currentSystemPrompt
+                )
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        dataStore.completeGeneration(id: itemId, output: output)
+                        generationTask = nil
                     }
                 }
-
-                Text(request.promptPreview)
-                    .font(Theme.captionFont())
-                    .foregroundColor(isSelected ? Theme.textPrimary : Theme.textSecondary)
-                    .lineLimit(1)
-
-                // Cancel button for active requests
-                if request.status == .generating || request.status == .pending {
-                    Button(action: onCancel) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(Theme.textTertiary)
+            } catch {
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        dataStore.failGeneration(id: itemId, error: error.localizedDescription)
+                        errorMessage = error.localizedDescription
+                        showingErrorAlert = true
+                        generationTask = nil
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, Theme.spacingM)
-            .padding(.vertical, Theme.spacingS)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.radiusS)
-                    .fill(isSelected ? Theme.elevated : Theme.card)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.radiusS)
-                    .stroke(isSelected ? Theme.accent.opacity(0.6) : Theme.border, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-    }
-}
-
-// MARK: - Request Output View
-
-struct RequestOutputView: View {
-    let request: GenerationRequest
-    let onCancel: () -> Void
-
-    var body: some View {
-        switch request.status {
-        case .pending, .generating:
-            GeneratingView(onCancel: onCancel)
-        case .completed:
-            if let output = request.output {
-                MarkdownOutputView(content: output)
-            }
-        case .failed:
-            FailedView(error: request.error ?? "Unknown error")
-        case .cancelled:
-            CancelledView()
         }
     }
-}
 
-struct FailedView: View {
-    let error: String
-
-    var body: some View {
-        VStack(spacing: Theme.spacingM) {
-            Spacer()
-
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
-                .foregroundColor(Theme.error)
-
-            Text("Generation Failed")
-                .font(Theme.headlineFont())
-                .foregroundColor(Theme.textPrimary)
-
-            Text(error)
-                .font(Theme.bodyFont())
-                .foregroundColor(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-
-            Spacer()
+    private func cancelGeneration() {
+        generationTask?.cancel()
+        generationTask = nil
+        if let id = dataStore.generatingItemId {
+            dataStore.cancelGeneration(id: id)
         }
-        .frame(maxWidth: .infinity)
-        .padding(Theme.spacingXL)
-        .themedCard()
-    }
-}
-
-struct CancelledView: View {
-    var body: some View {
-        VStack(spacing: Theme.spacingM) {
-            Spacer()
-
-            Image(systemName: "xmark.circle")
-                .font(.system(size: 32))
-                .foregroundColor(Theme.textTertiary)
-
-            Text("Generation Cancelled")
-                .font(Theme.headlineFont())
-                .foregroundColor(Theme.textSecondary)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
-        .padding(Theme.spacingXL)
-        .themedCard()
     }
 }
 
@@ -446,28 +301,58 @@ struct TemplateChip: View {
     }
 }
 
-// MARK: - Prompt Input Field
+// MARK: - Auto-Resizing Prompt Input
 
-struct PromptInputField: View {
+struct AutoResizingPromptInput: View {
     @Binding var text: String
     var isGenerating: Bool = false
     let onSubmit: () -> Void
 
     @FocusState private var isFocused: Bool
+    @State private var textHeight: CGFloat = 60
+
+    private let minHeight: CGFloat = 60
+    private let maxHeight: CGFloat = 200
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingM) {
-            // Text input with Things-like clean styling
-            TextEditor(text: $text)
-                .font(Theme.bodyFont(14))
-                .foregroundColor(Theme.textPrimary)
-                .lineSpacing(4)
-                .frame(minHeight: 100, maxHeight: 180)
-                .scrollContentBackground(.hidden)
-                .padding(Theme.spacingM)
-                .themedInput(isFocused: isFocused)
-                .focused($isFocused)
-                .disabled(isGenerating)
+            // Auto-resizing text input
+            ZStack(alignment: .topLeading) {
+                // Hidden text for measuring - must match TextEditor's layout
+                Text(text.isEmpty ? " " : text)
+                    .font(Theme.bodyFont(14))
+                    .lineSpacing(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(Theme.spacingM)
+                    .opacity(0)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: TextHeightKey.self,
+                                value: geo.size.height
+                            )
+                        }
+                    )
+
+                // Actual text editor
+                TextEditor(text: $text)
+                    .font(Theme.bodyFont(14))
+                    .foregroundColor(Theme.textPrimary)
+                    .lineSpacing(4)
+                    .scrollContentBackground(.hidden)
+                    .scrollDisabled(textHeight <= maxHeight)
+                    .padding(Theme.spacingM)
+                    .focused($isFocused)
+                    .disabled(isGenerating)
+            }
+            .frame(height: max(minHeight, min(textHeight, maxHeight)))
+            .themedInput(isFocused: isFocused)
+            .onPreferenceChange(TextHeightKey.self) { height in
+                withAnimation(.easeOut(duration: 0.1)) {
+                    textHeight = height
+                }
+            }
 
             // Bottom row with hint and button
             HStack(alignment: .center) {
@@ -499,6 +384,13 @@ struct PromptInputField: View {
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
+    }
+}
+
+private struct TextHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 60
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -534,9 +426,55 @@ struct GeneratingView: View {
     }
 }
 
-// MARK: - Markdown Output View
+// MARK: - Failed Generation View
 
-import MarkdownUI
+struct FailedGenerationView: View {
+    let error: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: Theme.spacingM) {
+            Spacer()
+
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 32))
+                .foregroundColor(Theme.error)
+
+            Text("Generation Failed")
+                .font(Theme.headlineFont())
+                .foregroundColor(Theme.textPrimary)
+
+            Text(error)
+                .font(Theme.bodyFont())
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+
+            Spacer()
+
+            Button(action: onRetry) {
+                HStack(spacing: Theme.spacingS) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Retry")
+                        .font(Theme.headlineFont(13))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, Theme.spacingL)
+                .padding(.vertical, Theme.spacingS)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.radiusS)
+                        .fill(Theme.accent)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(Theme.spacingXL)
+        .themedCard()
+    }
+}
+
+// MARK: - Markdown Output View
 
 struct MarkdownOutputView: View {
     let content: String
@@ -553,35 +491,32 @@ struct MarkdownOutputView: View {
 
                 Spacer()
 
-                Button(action: copyAllToClipboard) {
+                Button(action: copyToClipboard) {
                     HStack(spacing: Theme.spacingXS) {
                         Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        Text(isCopied ? "Copied!" : "Copy All")
+                        Text(isCopied ? "Copied!" : "Copy")
                     }
                     .font(Theme.captionFont())
                     .foregroundColor(isCopied ? Theme.success : Theme.accent)
                 }
                 .buttonStyle(.plain)
-                .help("Copy entire output to clipboard")
+                .help("Copy to clipboard")
             }
 
-            // Content - MarkdownUI for proper code block rendering
-            ScrollView {
-                Markdown(content)
-                    .markdownTheme(.royalVelvet)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(Theme.spacingM)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.radiusM)
-                    .fill(Theme.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.radiusM)
-                    .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
-            )
+            // Content - MarkdownUI (no scroll - parent handles scrolling)
+            Markdown(content)
+                .markdownTheme(.royalVelvet)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.spacingM)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.radiusM)
+                        .fill(Theme.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radiusM)
+                        .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
+                )
         }
         .padding(Theme.spacingL)
         .background(
@@ -594,7 +529,7 @@ struct MarkdownOutputView: View {
         )
     }
 
-    private func copyAllToClipboard() {
+    private func copyToClipboard() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(content, forType: .string)
         isCopied = true
@@ -606,7 +541,7 @@ struct MarkdownOutputView: View {
 
 // MARK: - Code Block with Copy Button
 
-struct CopyableCodeBlock: View {
+struct CodeBlockView: View {
     let configuration: CodeBlockConfiguration
 
     @State private var isCopied = false
@@ -692,7 +627,7 @@ extension MarkdownUI.Theme {
             ForegroundColor(Theme.accent)
         }
         .codeBlock { configuration in
-            CopyableCodeBlock(configuration: configuration)
+            CodeBlockView(configuration: configuration)
                 .markdownMargin(top: 8, bottom: 8)
         }
         .heading1 { configuration in
