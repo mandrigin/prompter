@@ -96,7 +96,7 @@ struct MainView: View {
                 BottomToolbar(showingHistory: $showingHistory)
             }
         }
-        .frame(minWidth: 400, minHeight: 300)
+        .frame(minWidth: 600, minHeight: 400)
         .alert("Generation Failed", isPresented: $showingErrorAlert) {
             Button("Dismiss", role: .cancel) {
                 generationError = nil
