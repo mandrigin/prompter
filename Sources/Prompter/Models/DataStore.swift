@@ -108,9 +108,12 @@ class DataStore: ObservableObject {
 
     func completeGeneration(id: UUID, output: String) {
         if let index = history.firstIndex(where: { $0.id == id }) {
-            history[index].generatedOutput = output
+            history[index].addVersion(output: output)
             history[index].generationStatus = .completed
             history[index].errorMessage = nil
+            // Move to top of history since it was just updated
+            let item = history.remove(at: index)
+            history.insert(item, at: 0)
             saveHistory()
         }
         if generatingItemId == id {

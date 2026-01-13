@@ -141,15 +141,22 @@ struct MainView: View {
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { return }
 
-        // Create new history item with generating status
-        var historyItem = PromptHistory(prompt: trimmedPrompt)
-        historyItem.generationStatus = .generating
-        dataStore.addHistoryItem(historyItem)
-        selectedItemId = historyItem.id
+        let itemId: UUID
 
+        // Check if this prompt already exists - if so, add a new version instead of creating duplicate
+        if let existingItem = dataStore.findExistingPrompt(trimmedPrompt) {
+            itemId = existingItem.id
+        } else {
+            // Create new history item with generating status
+            var historyItem = PromptHistory(prompt: trimmedPrompt)
+            historyItem.generationStatus = .generating
+            dataStore.addHistoryItem(historyItem)
+            itemId = historyItem.id
+        }
+
+        selectedItemId = itemId
         let inputPrompt = trimmedPrompt
         let currentSystemPrompt = length == .short ? systemPromptShort : systemPromptLong
-        let itemId = historyItem.id
         promptText = ""
 
         // Mark as generating in datastore
