@@ -6,7 +6,6 @@ struct MainView: View {
     @State private var promptText: String = ""
     @State private var selectedMode: PromptMode = .primary
     @State private var showingHistory: Bool = true
-    @State private var showingSettings: Bool = false
 
     var body: some View {
         HSplitView {
@@ -52,17 +51,10 @@ struct MainView: View {
                 Spacer()
 
                 // Bottom toolbar
-                BottomToolbar(
-                    showingHistory: $showingHistory,
-                    showingSettings: $showingSettings
-                )
+                BottomToolbar(showingHistory: $showingHistory)
             }
         }
         .frame(minWidth: 400, minHeight: 300)
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
-                .environmentObject(dataStore)
-        }
     }
 
     private func submitPrompt() {
@@ -187,7 +179,6 @@ struct PromptInputField: View {
 
 struct BottomToolbar: View {
     @Binding var showingHistory: Bool
-    @Binding var showingSettings: Bool
 
     var body: some View {
         HStack {
@@ -199,7 +190,7 @@ struct BottomToolbar: View {
 
             Spacer()
 
-            Button(action: { showingSettings = true }) {
+            SettingsLink {
                 Image(systemName: "gear")
             }
             .buttonStyle(.plain)
