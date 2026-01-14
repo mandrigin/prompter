@@ -39,7 +39,9 @@ class MainActivity : ComponentActivity() {
                     composable("settings") {
                         SettingsScreen(
                             settings = settings,
-                            onApiKeyChange = settingsRepository::updateApiKey,
+                            onProviderChange = settingsRepository::updateProvider,
+                            onOpenaiApiKeyChange = settingsRepository::updateOpenaiApiKey,
+                            onClaudeApiKeyChange = settingsRepository::updateClaudeApiKey,
                             onModelChange = settingsRepository::updateModel,
                             onSystemPromptShortChange = settingsRepository::updateSystemPromptShort,
                             onSystemPromptLongChange = settingsRepository::updateSystemPromptLong,
