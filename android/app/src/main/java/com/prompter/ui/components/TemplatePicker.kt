@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -120,7 +121,7 @@ private fun getTemplateIcon(name: String): ImageVector {
         lowerName.contains("architecture") -> Icons.Default.AccountBalance
         lowerName.contains("best") || lowerName.contains("practice") -> Icons.Default.Star
         lowerName.contains("test") -> Icons.Default.CheckCircle
-        lowerName.contains("business") -> Icons.Default.TrendingUp
+        lowerName.contains("business") -> Icons.AutoMirrored.Filled.TrendingUp
         lowerName.contains("technical") -> Icons.Default.Search
         else -> Icons.Default.AutoAwesome
     }
