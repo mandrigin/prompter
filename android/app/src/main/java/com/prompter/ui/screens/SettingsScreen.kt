@@ -159,6 +159,7 @@ private fun SettingsSection(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProviderSelector(
     selectedProvider: AIProvider,
