@@ -1,6 +1,7 @@
 package com.prompter.ui.screens
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.prompter.data.ApiKeyManager
@@ -10,6 +11,8 @@ import com.prompter.service.StreamEvent
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.net.UnknownHostException
+import java.net.SocketTimeoutException
 
 data class MainUiState(
     val promptText: String = "",
@@ -115,84 +118,136 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun generatePrompt(length: PromptLength) {
         val prompt = _uiState.value.promptText.trim()
-        if (prompt.isEmpty()) return
+        if (prompt.isEmpty()) {
+            _uiState.update { it.copy(error = "Please enter a prompt first") }
+            return
+        }
+
+        // Check API key before starting
+        if (!apiKeyManager.hasApiKey) {
+            _uiState.update { it.copy(error = "API key not configured. Please add your OpenAI API key in Settings.") }
+            return
+        }
 
         generationJob?.cancel()
 
         viewModelScope.launch {
-            // Find or create history item
-            val historyId: String
-            val existingItem = repository.findExistingPrompt(prompt)
+            var historyId: String? = null
+            try {
+                // Find or create history item
+                val existingItem = repository.findExistingPrompt(prompt)
 
-            if (existingItem != null) {
-                historyId = existingItem.id
-            } else {
-                val newHistory = PromptHistoryEntity(
-                    prompt = prompt,
-                    generationStatus = GenerationStatus.GENERATING.name
-                )
-                repository.insertHistory(newHistory)
-                historyId = newHistory.id
-            }
+                historyId = if (existingItem != null) {
+                    existingItem.id
+                } else {
+                    val newHistory = PromptHistoryEntity(
+                        prompt = prompt,
+                        generationStatus = GenerationStatus.GENERATING.name
+                    )
+                    repository.insertHistory(newHistory)
+                    newHistory.id
+                }
 
-            currentHistoryId = historyId
-            _uiState.update { state ->
-                state.copy(
-                    selectedHistoryId = historyId,
-                    isGenerating = true,
-                    error = null,
-                    generatedOutput = ""
-                )
-            }
-            generatingIds.update { it + historyId }
-            repository.updateHistoryStatus(historyId, GenerationStatus.GENERATING)
+                currentHistoryId = historyId
+                _uiState.update { state ->
+                    state.copy(
+                        selectedHistoryId = historyId,
+                        isGenerating = true,
+                        error = null,
+                        generatedOutput = ""
+                    )
+                }
+                generatingIds.update { it + historyId }
+                repository.updateHistoryStatus(historyId, GenerationStatus.GENERATING)
 
-            val systemPrompt = when (length) {
-                PromptLength.SHORT -> SHORT_SYSTEM_PROMPT
-                PromptLength.LONG -> LONG_SYSTEM_PROMPT
-            }
+                val systemPrompt = when (length) {
+                    PromptLength.SHORT -> SHORT_SYSTEM_PROMPT
+                    PromptLength.LONG -> LONG_SYSTEM_PROMPT
+                }
 
-            var fullOutput = ""
+                var fullOutput = ""
 
-            generationJob = viewModelScope.launch {
-                try {
-                    promptService.generatePromptStream(prompt, systemPrompt).collect { event ->
-                        when (event) {
-                            is StreamEvent.Started -> {
-                                // Already handled above
-                            }
-                            is StreamEvent.Content -> {
-                                fullOutput += event.text
-                                _uiState.update { state ->
-                                    state.copy(generatedOutput = fullOutput)
+                generationJob = viewModelScope.launch {
+                    try {
+                        promptService.generatePromptStream(prompt, systemPrompt).collect { event ->
+                            when (event) {
+                                is StreamEvent.Started -> {
+                                    // Already handled above
                                 }
-                            }
-                            is StreamEvent.Completed -> {
-                                // Save the version to database
-                                repository.addVersion(historyId, fullOutput)
-                                _uiState.update { state ->
-                                    state.copy(isGenerating = false)
+                                is StreamEvent.Content -> {
+                                    fullOutput += event.text
+                                    _uiState.update { state ->
+                                        state.copy(generatedOutput = fullOutput)
+                                    }
                                 }
-                                generatingIds.update { it - historyId }
-                            }
-                            is StreamEvent.Error -> {
-                                repository.updateHistoryStatus(historyId, GenerationStatus.FAILED, event.message)
-                                _uiState.update { state ->
-                                    state.copy(isGenerating = false, error = event.message)
+                                is StreamEvent.Completed -> {
+                                    // Save the version to database
+                                    try {
+                                        repository.addVersion(historyId, fullOutput)
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Failed to save version to database", e)
+                                    }
+                                    _uiState.update { state ->
+                                        state.copy(isGenerating = false)
+                                    }
+                                    generatingIds.update { it - historyId }
                                 }
-                                generatingIds.update { it - historyId }
+                                is StreamEvent.Error -> {
+                                    Log.e(TAG, "Stream error: ${event.message}")
+                                    try {
+                                        repository.updateHistoryStatus(historyId, GenerationStatus.FAILED, event.message)
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Failed to update history status", e)
+                                    }
+                                    _uiState.update { state ->
+                                        state.copy(isGenerating = false, error = formatErrorMessage(event.message))
+                                    }
+                                    generatingIds.update { it - historyId }
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Generation error", e)
+                        val errorMessage = formatErrorMessage(e)
+                        try {
+                            repository.updateHistoryStatus(historyId, GenerationStatus.FAILED, errorMessage)
+                        } catch (dbError: Exception) {
+                            Log.e(TAG, "Failed to update history status", dbError)
+                        }
+                        _uiState.update { state ->
+                            state.copy(isGenerating = false, error = errorMessage)
+                        }
+                        generatingIds.update { it - historyId }
                     }
-                } catch (e: Exception) {
-                    repository.updateHistoryStatus(historyId, GenerationStatus.FAILED, e.message)
-                    _uiState.update { state ->
-                        state.copy(isGenerating = false, error = e.message)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start generation", e)
+                val errorMessage = formatErrorMessage(e)
+                _uiState.update { state ->
+                    state.copy(isGenerating = false, error = errorMessage)
+                }
+                historyId?.let { id ->
+                    generatingIds.update { it - id }
+                    try {
+                        repository.updateHistoryStatus(id, GenerationStatus.FAILED, errorMessage)
+                    } catch (dbError: Exception) {
+                        Log.e(TAG, "Failed to update history status", dbError)
                     }
-                    generatingIds.update { it - historyId }
                 }
             }
         }
+    }
+
+    private fun formatErrorMessage(e: Exception): String {
+        return when (e) {
+            is UnknownHostException -> "No internet connection. Please check your network."
+            is SocketTimeoutException -> "Request timed out. Please try again."
+            else -> e.message ?: "An unexpected error occurred"
+        }
+    }
+
+    private fun formatErrorMessage(message: String?): String {
+        return message ?: "An unexpected error occurred"
     }
 
     fun cancelGeneration() {
@@ -244,6 +299,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
+        private const val TAG = "MainViewModel"
+
         private const val SHORT_SYSTEM_PROMPT = """You are a prompt engineer. Transform the user's rough idea into a clear, focused prompt optimized for LLMs. Be concise - aim for 2-3 sentences that capture the core intent. Focus on clarity and specificity."""
 
         private const val LONG_SYSTEM_PROMPT = """You are an expert prompt engineer. Transform the user's rough idea into a comprehensive, well-structured prompt optimized for large language models.

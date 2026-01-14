@@ -191,16 +191,16 @@ fun MainScreen(
                     )
                 }
 
-                // Error snackbar
-                uiState.error?.let { error ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    ErrorCard(
-                        message = error,
-                        onDismiss = viewModel::clearError
-                    )
-                }
             }
         }
+    }
+
+    // Error dialog
+    uiState.error?.let { error ->
+        ErrorDialog(
+            message = error,
+            onDismiss = viewModel::clearError
+        )
     }
 }
 
@@ -486,32 +486,42 @@ private fun OutputArea(
 }
 
 @Composable
-private fun ErrorCard(
+private fun ErrorDialog(
     message: String,
     onDismiss: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Error.copy(alpha = 0.15f)),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.Error,
+                contentDescription = null,
+                tint = Error,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Text(
+                "Error",
+                color = TextPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
             Text(
                 text = message,
-                color = Error,
-                modifier = Modifier.weight(1f),
-                fontSize = 13.sp
+                color = TextSecondary
             )
+        },
+        confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Dismiss", color = Error)
+                Text("OK", color = Accent)
             }
-        }
-    }
+        },
+        containerColor = Surface,
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary
+    )
 }
 
 private fun copyToClipboard(context: Context, text: String) {
