@@ -10,26 +10,30 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
+// Nothing OS + Teenage Engineering inspired dark theme
+private val NothingColorScheme = darkColorScheme(
     primary = Accent,
     secondary = AccentSoft,
     tertiary = AccentLight,
     background = Background,
     surface = Surface,
+    surfaceVariant = Card,
     onPrimary = TextPrimary,
     onSecondary = TextPrimary,
     onTertiary = TextPrimary,
     onBackground = TextPrimary,
     onSurface = TextPrimary,
+    onSurfaceVariant = TextSecondary,
     error = Error,
-    onError = TextPrimary
+    onError = TextPrimary,
+    outline = Border
 )
 
 @Composable
 fun PrompterTheme(
     content: @Composable () -> Unit
 ) {
-    val colorScheme = DarkColorScheme
+    val colorScheme = NothingColorScheme
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
