@@ -47,9 +47,10 @@ class ApiKeyManager(context: Context) {
 
     companion object {
         private const val PREFS_FILE_NAME = "prompter_secure_prefs"
-        private const val KEY_API_KEY = "openai_api_key"
-        private const val KEY_MODEL = "openai_model"
-        const val DEFAULT_MODEL = "gpt-4o"
+        // Use same key names as SettingsRepository for consistency
+        private const val KEY_API_KEY = "api_key"
+        private const val KEY_MODEL = "model"
+        const val DEFAULT_MODEL = "gpt-4"
 
         val AVAILABLE_MODELS = listOf(
             "gpt-4o",
