@@ -31,6 +31,7 @@ import com.prompter.ui.components.HistoryDrawer
 import com.prompter.ui.components.TemplatePicker
 import com.prompter.ui.components.VersionSelector
 import com.prompter.ui.theme.*
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,6 +61,12 @@ fun MainScreen(
         if (drawerState.currentValue == DrawerValue.Closed && uiState.showDrawer) {
             viewModel.toggleDrawer()
         }
+    }
+
+    // Refresh API key state when screen resumes (e.g., returning from settings)
+    LifecycleResumeEffect(Unit) {
+        viewModel.checkApiKey()
+        onPauseOrDispose { }
     }
 
     ModalNavigationDrawer(
