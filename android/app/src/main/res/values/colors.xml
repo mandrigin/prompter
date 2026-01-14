@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Royal Velvet theme colors -->
+    <color name="background">#FF1B1531</color>
+    <color name="surface">#FF251E40</color>
+    <color name="card">#FF2E264C</color>
+    <color name="elevated">#FF372E58</color>
+
+    <color name="accent">#FFA386F9</color>
+    <color name="accent_light">#FFC4B2FF</color>
+    <color name="accent_soft">#FF886ED4</color>
+
+    <color name="text_primary">#FFF3F1F9</color>
+    <color name="text_secondary">#FFB6AEC8</color>
+    <color name="text_tertiary">#FF88809F</color>
+
+    <color name="success">#FF61D68F</color>
+    <color name="warning">#FFF9C158</color>
+    <color name="error">#FFF76970</color>
+
+    <color name="border">#FF463C62</color>
+    <color name="separator">#FF383050</color>
+</resources>
