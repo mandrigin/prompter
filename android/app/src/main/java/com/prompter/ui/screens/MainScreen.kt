@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -339,10 +340,9 @@ private fun GenerateButtons(
             colors = ButtonDefaults.outlinedButtonColors(
                 contentColor = Accent
             ),
-            border = ButtonDefaults.outlinedButtonBorder(enabled = isEnabled).copy(
-                brush = androidx.compose.ui.graphics.SolidColor(
-                    if (isEnabled) Accent.copy(alpha = 0.5f) else Border
-                )
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (isEnabled) Accent.copy(alpha = 0.5f) else Border
             ),
             shape = RoundedCornerShape(8.dp)
         ) {
@@ -463,14 +463,10 @@ private fun OutputArea(
                 }
 
                 // Streaming indicator
-                AnimatedVisibility(
-                    visible = isGenerating,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                    modifier = Modifier.align(Alignment.BottomEnd)
-                ) {
+                if (isGenerating) {
                     CircularProgressIndicator(
                         modifier = Modifier
+                            .align(Alignment.BottomEnd)
                             .padding(8.dp)
                             .size(16.dp),
                         color = Accent,
