@@ -5,10 +5,14 @@ A macOS menu bar app for Claude Code integration.
 ## Table of Contents
 
 - [Requirements](#requirements)
-- [Building](#building)
+- [Building (macOS)](#building-macos)
   - [Using the build script](#using-the-build-script-recommended)
   - [Using Swift Package Manager](#using-swift-package-manager-directly)
   - [Using xcodebuild](#using-xcodebuild)
+- [Building (Android)](#building-android)
+  - [Prerequisites](#prerequisites)
+  - [Build Commands](#build-commands)
+  - [APK Location](#apk-location)
 - [Running](#running)
 - [How to Use](#how-to-use)
   - [Opening Prompter](#opening-prompter)
@@ -21,6 +25,7 @@ A macOS menu bar app for Claude Code integration.
   - [Customizing the System Prompt](#customizing-the-system-prompt)
 - [Architecture](#architecture)
   - [Project Structure](#project-structure)
+  - [Nothing OS 4.0 Design](#nothing-os-40-design)
 - [License](#license)
 
 ## Requirements
@@ -29,7 +34,7 @@ A macOS menu bar app for Claude Code integration.
 - Xcode 15.0+ or Swift 5.9+
 - Claude Code CLI installed
 
-## Building
+## Building (macOS)
 
 ### Using the build script (recommended)
 
@@ -65,6 +70,57 @@ xcodebuild -scheme Prompter -configuration Release build
 
 # Or open in Xcode
 open Package.swift
+```
+
+## Building (Android)
+
+### Prerequisites
+
+Install the required development tools using the provided script:
+
+```bash
+./install-prereqs.sh
+```
+
+This script installs:
+- Java JDK 17+
+- Android SDK command-line tools
+- Android platform tools
+- Accepts SDK licenses automatically
+
+**Manual installation** (if you prefer not to use the script):
+- Install Java JDK 17 or later
+- Install Android Studio or Android SDK command-line tools
+- Set `ANDROID_SDK_ROOT` environment variable
+- Accept licenses: `sdkmanager --licenses`
+
+### Build Commands
+
+```bash
+# Using the build script (recommended)
+./build.sh
+
+# Or using Gradle directly
+./gradlew assembleDebug    # Debug build
+./gradlew assembleRelease  # Release build
+
+# Clean build
+./gradlew clean assembleDebug
+```
+
+### APK Location
+
+After a successful build, find the APK at:
+
+```
+app/build/outputs/apk/debug/app-debug.apk        # Debug build
+app/build/outputs/apk/release/app-release.apk    # Release build
+```
+
+Install on a connected device:
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Running
@@ -174,8 +230,39 @@ Prompter is an agent app (`LSUIElement=true`) that runs in the menu bar without 
 │       │   └── SettingsView.swift   # Settings window
 │       └── Resources/
 │           └── Info.plist           # App configuration
+├── app/                             # Android app module
+│   └── src/main/java/com/prompter/
+│       └── ui/theme/
+│           └── NothingTheme.kt      # Nothing OS 4.0 theme
 └── README.md
 ```
+
+### Nothing OS 4.0 Design
+
+The Android version features a Nothing OS 4.0-inspired visual design:
+
+**Color Palette**
+- Monochromatic base: Pure black (#000000) and white (#FFFFFF)
+- Accent color: Nothing red (#D71921)
+- High contrast for accessibility and readability
+
+**Typography**
+- Dot-matrix aesthetic inspired by NDot font family
+- Monospace typeface for technical, clean appearance
+- Consistent weight hierarchy across all text styles
+
+**Visual Elements**
+- Clean geometric shapes with subtle rounded corners
+- Minimal shadows and depth
+- Glyph-style iconography
+- Both dark and light theme support
+
+**Implementation**
+The theme is implemented in `NothingTheme.kt` using Jetpack Compose Material3:
+- `NothingColors` - Color definitions
+- `NothingTypography` - Text styles
+- `NothingShapes` - Shape definitions
+- `NothingTheme()` - Composable theme wrapper
 
 ## License
 
