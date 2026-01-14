@@ -208,8 +208,9 @@ fun MainScreen(
 private fun ApiKeyWarning(onNavigateToSettings: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Warning.copy(alpha = 0.15f)),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(4.dp),
+        border = BorderStroke(1.dp, Warning)
     ) {
         Row(
             modifier = Modifier
@@ -218,13 +219,20 @@ private fun ApiKeyWarning(onNavigateToSettings: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "API key required",
+                text = "API KEY REQUIRED",
                 color = Warning,
                 fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                letterSpacing = 1.sp,
                 modifier = Modifier.weight(1f)
             )
             TextButton(onClick = onNavigateToSettings) {
-                Text("Configure", color = Warning)
+                Text(
+                    "CONFIGURE",
+                    color = Warning,
+                    fontSize = 12.sp,
+                    letterSpacing = 1.sp
+                )
             }
         }
     }
@@ -337,35 +345,46 @@ private fun GenerateButtons(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Short button
+        // Short button - ghost/outlined style
         OutlinedButton(
             onClick = onGenerateShort,
             enabled = isEnabled && !isGenerating,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp),
             colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = Accent
+                contentColor = Accent,
+                disabledContentColor = TextTertiary
             ),
             border = BorderStroke(
                 width = 1.dp,
-                color = if (isEnabled) Accent.copy(alpha = 0.5f) else Border
+                color = if (isEnabled) Accent else Border
             ),
-            shape = RoundedCornerShape(8.dp)
+            shape = RoundedCornerShape(4.dp)
         ) {
-            Text("⚡ Short")
+            Text(
+                "SHORT",
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.sp
+            )
         }
 
-        // Long button
+        // Long button - filled red accent
         Button(
             onClick = onGenerateLong,
             enabled = isEnabled && !isGenerating,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Accent,
-                contentColor = TextPrimary
+                contentColor = TextPrimary,
+                disabledContainerColor = Border,
+                disabledContentColor = TextTertiary
             ),
-            shape = RoundedCornerShape(8.dp)
+            shape = RoundedCornerShape(4.dp)
         ) {
             if (isGenerating) {
                 CircularProgressIndicator(
@@ -375,7 +394,11 @@ private fun GenerateButtons(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             }
-            Text("✨ Long")
+            Text(
+                "LONG",
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.sp
+            )
         }
     }
 }
@@ -391,9 +414,9 @@ private fun OutputArea(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Accent.copy(alpha = 0.08f))
-            .border(1.dp, Accent.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(4.dp))
+            .background(Card)
+            .border(1.dp, Border, RoundedCornerShape(4.dp))
             .padding(16.dp)
     ) {
         // Header
@@ -403,10 +426,11 @@ private fun OutputArea(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Generated Prompt",
-                color = TextPrimary,
+                "OUTPUT",
+                color = TextSecondary,
                 fontWeight = FontWeight.Medium,
-                fontSize = 14.sp
+                fontSize = 12.sp,
+                letterSpacing = 1.sp
             )
 
             if (output.isNotEmpty()) {
@@ -415,7 +439,7 @@ private fun OutputArea(
                         Icons.Default.ContentCopy,
                         contentDescription = "Copy",
                         tint = Accent,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -428,9 +452,9 @@ private fun OutputArea(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(4.dp))
                 .background(Surface)
-                .border(1.dp, Accent.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .border(1.dp, Border, RoundedCornerShape(4.dp))
         ) {
             if (isGenerating && output.isEmpty()) {
                 // Loading state
@@ -443,16 +467,24 @@ private fun OutputArea(
                 ) {
                     CircularProgressIndicator(
                         color = Accent,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "Generating improved prompt...",
-                        color = TextSecondary
+                        "GENERATING...",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        letterSpacing = 1.sp
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     TextButton(onClick = onCancel) {
-                        Text("Cancel", color = TextTertiary)
+                        Text(
+                            "CANCEL",
+                            color = TextTertiary,
+                            fontSize = 12.sp,
+                            letterSpacing = 1.sp
+                        )
                     }
                 }
             } else {

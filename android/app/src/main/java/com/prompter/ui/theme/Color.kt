@@ -2,23 +2,27 @@ package com.prompter.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Royal Velvet theme colors (matching iOS app)
-val Background = Color(0xFF1B1531)
-val Surface = Color(0xFF251E40)
-val Card = Color(0xFF2E264C)
-val Elevated = Color(0xFF372E58)
+// Nothing OS + Teenage Engineering inspired theme
+// Pure black backgrounds, red accent, high contrast
 
-val Accent = Color(0xFFA386F9)
-val AccentLight = Color(0xFFC4B2FF)
-val AccentSoft = Color(0xFF886ED4)
+val Background = Color(0xFF000000)
+val Surface = Color(0xFF0A0A0A)
+val Card = Color(0xFF141414)
+val Elevated = Color(0xFF1A1A1A)
 
-val TextPrimary = Color(0xFFF3F1F9)
-val TextSecondary = Color(0xFFB6AEC8)
-val TextTertiary = Color(0xFF88809F)
+// Nothing red accent
+val Accent = Color(0xFFD71921)
+val AccentLight = Color(0xFFFF3B3B)
+val AccentSoft = Color(0xFFB01018)
 
-val Success = Color(0xFF61D68F)
-val Warning = Color(0xFFF9C158)
-val Error = Color(0xFFF76970)
+// High contrast text
+val TextPrimary = Color(0xFFFFFFFF)
+val TextSecondary = Color(0xFFB3B3B3)
+val TextTertiary = Color(0xFF666666)
 
-val Border = Color(0xFF463C62)
-val Separator = Color(0xFF383050)
+val Success = Color(0xFF00FF66)
+val Warning = Color(0xFFFFCC00)
+val Error = Color(0xFFFF3333)
+
+val Border = Color(0xFF2A2A2A)
+val Separator = Color(0xFF1F1F1F)

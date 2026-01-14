@@ -20,7 +20,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.prompter.data.AIProvider
 import com.prompter.data.Settings
 import com.prompter.data.SettingsRepository
@@ -141,14 +143,16 @@ private fun SettingsSection(
 ) {
     Column {
         Text(
-            text = title,
+            text = title.uppercase(),
             style = MaterialTheme.typography.titleMedium,
             color = Accent,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 1.sp,
             modifier = Modifier.padding(bottom = 12.dp)
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(4.dp),
             colors = CardDefaults.cardColors(containerColor = Surface)
         ) {
             Column(
@@ -257,7 +261,7 @@ private fun ApiKeyInput(
                 focusedContainerColor = Card,
                 unfocusedContainerColor = Card
             ),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(4.dp),
             singleLine = true
         )
     }
@@ -305,7 +309,7 @@ private fun ModelSelector(
                     focusedContainerColor = Card,
                     unfocusedContainerColor = Card
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(4.dp)
             )
             ExposedDropdownMenu(
                 expanded = expanded,
@@ -367,7 +371,7 @@ private fun SystemPromptInput(
                 focusedContainerColor = Card,
                 unfocusedContainerColor = Card
             ),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(4.dp),
             maxLines = 8
         )
     }
@@ -381,7 +385,7 @@ private fun ThemeToggle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(4.dp))
             .clickable { onThemeChange(!isDarkTheme) }
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
