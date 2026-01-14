@@ -15,11 +15,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.prompter.data.AIProvider
 import com.prompter.data.Settings
 import com.prompter.data.SettingsRepository
 import com.prompter.ui.theme.*
@@ -28,7 +30,9 @@ import com.prompter.ui.theme.*
 @Composable
 fun SettingsScreen(
     settings: Settings,
-    onApiKeyChange: (String) -> Unit,
+    onProviderChange: (AIProvider) -> Unit,
+    onOpenaiApiKeyChange: (String) -> Unit,
+    onClaudeApiKeyChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
     onSystemPromptShortChange: (String) -> Unit,
     onSystemPromptLongChange: (String) -> Unit,
@@ -67,13 +71,30 @@ fun SettingsScreen(
         ) {
             // API Configuration Section
             SettingsSection(title = "API Configuration") {
+                ProviderSelector(
+                    selectedProvider = settings.provider,
+                    onProviderChange = onProviderChange
+                )
+                Spacer(modifier = Modifier.height(16.dp))
                 ApiKeyInput(
-                    apiKey = settings.apiKey,
-                    onApiKeyChange = onApiKeyChange
+                    label = "OpenAI API Key",
+                    apiKey = settings.openaiApiKey,
+                    placeholder = "sk-...",
+                    onApiKeyChange = onOpenaiApiKeyChange,
+                    isActive = settings.provider == AIProvider.OPENAI
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                ApiKeyInput(
+                    label = "Claude API Key",
+                    apiKey = settings.claudeApiKey,
+                    placeholder = "sk-ant-...",
+                    onApiKeyChange = onClaudeApiKeyChange,
+                    isActive = settings.provider == AIProvider.CLAUDE
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 ModelSelector(
                     selectedModel = settings.model,
+                    provider = settings.provider,
                     onModelChange = onModelChange
                 )
             }
@@ -139,24 +160,82 @@ private fun SettingsSection(
 }
 
 @Composable
-private fun ApiKeyInput(
-    apiKey: String,
-    onApiKeyChange: (String) -> Unit
+private fun ProviderSelector(
+    selectedProvider: AIProvider,
+    onProviderChange: (AIProvider) -> Unit
 ) {
-    var isVisible by remember { mutableStateOf(false) }
-
     Column {
         Text(
-            text = "OpenAI API Key",
+            text = "AI Provider",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             modifier = Modifier.padding(bottom = 8.dp)
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            AIProvider.entries.forEach { provider ->
+                FilterChip(
+                    selected = selectedProvider == provider,
+                    onClick = { onProviderChange(provider) },
+                    label = {
+                        Text(
+                            when (provider) {
+                                AIProvider.OPENAI -> "OpenAI"
+                                AIProvider.CLAUDE -> "Claude"
+                            }
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Accent,
+                        selectedLabelColor = TextPrimary,
+                        containerColor = Card,
+                        labelColor = TextSecondary
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApiKeyInput(
+    label: String,
+    apiKey: String,
+    placeholder: String,
+    onApiKeyChange: (String) -> Unit,
+    isActive: Boolean
+) {
+    var isVisible by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier.alpha(if (isActive) 1f else 0.5f)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 8.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            if (isActive) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "(Active)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Accent
+                )
+            }
+        }
         OutlinedTextField(
             value = apiKey,
             onValueChange = onApiKeyChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("sk-...", color = TextTertiary) },
+            placeholder = { Text(placeholder, color = TextTertiary) },
             visualTransformation = if (isVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon = {
@@ -187,10 +266,15 @@ private fun ApiKeyInput(
 @Composable
 private fun ModelSelector(
     selectedModel: String,
+    provider: AIProvider,
     onModelChange: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedModelName = SettingsRepository.AVAILABLE_MODELS
+    val availableModels = when (provider) {
+        AIProvider.OPENAI -> SettingsRepository.OPENAI_MODELS
+        AIProvider.CLAUDE -> SettingsRepository.CLAUDE_MODELS
+    }
+    val selectedModelName = availableModels
         .find { it.first == selectedModel }?.second ?: selectedModel
 
     Column {
@@ -227,7 +311,7 @@ private fun ModelSelector(
                 onDismissRequest = { expanded = false },
                 modifier = Modifier.background(Elevated)
             ) {
-                SettingsRepository.AVAILABLE_MODELS.forEach { (modelId, modelName) ->
+                availableModels.forEach { (modelId, modelName) ->
                     DropdownMenuItem(
                         text = { Text(modelName, color = TextPrimary) },
                         onClick = {

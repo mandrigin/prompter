@@ -87,3 +87,75 @@ sealed class ApiResult<out T> {
     data class Error(val message: String, val code: Int? = null) : ApiResult<Nothing>()
     data object Loading : ApiResult<Nothing>()
 }
+
+// Claude API Models
+
+data class ClaudeMessagesRequest(
+    val model: String,
+    val messages: List<ClaudeMessage>,
+    val system: String? = null,
+    @SerializedName("max_tokens")
+    val maxTokens: Int = 4096,
+    val stream: Boolean = false
+)
+
+data class ClaudeMessage(
+    val role: String,
+    val content: String
+) {
+    companion object {
+        fun user(content: String) = ClaudeMessage("user", content)
+        fun assistant(content: String) = ClaudeMessage("assistant", content)
+    }
+}
+
+data class ClaudeMessagesResponse(
+    val id: String,
+    val type: String,
+    val role: String,
+    val content: List<ClaudeContentBlock>,
+    val model: String,
+    @SerializedName("stop_reason")
+    val stopReason: String?,
+    val usage: ClaudeUsage?
+)
+
+data class ClaudeContentBlock(
+    val type: String,
+    val text: String?
+)
+
+data class ClaudeUsage(
+    @SerializedName("input_tokens")
+    val inputTokens: Int,
+    @SerializedName("output_tokens")
+    val outputTokens: Int
+)
+
+// Claude streaming response models
+
+data class ClaudeStreamEvent(
+    val type: String,
+    val index: Int?,
+    val message: ClaudeMessagesResponse?,
+    val delta: ClaudeDelta?,
+    @SerializedName("content_block")
+    val contentBlock: ClaudeContentBlock?
+)
+
+data class ClaudeDelta(
+    val type: String?,
+    val text: String?,
+    @SerializedName("stop_reason")
+    val stopReason: String?
+)
+
+data class ClaudeError(
+    val type: String,
+    val error: ClaudeErrorDetails
+)
+
+data class ClaudeErrorDetails(
+    val type: String,
+    val message: String
+)

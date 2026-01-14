@@ -17,9 +17,24 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class PromptService(
-    private val apiKeyManager: ApiKeyManager
+    private val apiKeyManager: ApiKeyManager,
+    private val settingsProvider: (() -> Settings)? = null
 ) {
     private val gson = Gson()
+
+    private val currentProvider: AIProvider
+        get() = settingsProvider?.invoke()?.provider ?: AIProvider.OPENAI
+
+    private val currentApiKey: String?
+        get() = settingsProvider?.invoke()?.let { settings ->
+            when (settings.provider) {
+                AIProvider.OPENAI -> settings.openaiApiKey.takeIf { it.isNotBlank() }
+                AIProvider.CLAUDE -> settings.claudeApiKey.takeIf { it.isNotBlank() }
+            }
+        } ?: apiKeyManager.apiKey
+
+    private val currentModel: String
+        get() = settingsProvider?.invoke()?.model ?: apiKeyManager.model
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -31,11 +46,22 @@ class PromptService(
         userPrompt: String,
         systemPrompt: String
     ): ApiResult<String> {
-        val apiKey = apiKeyManager.apiKey
+        val apiKey = currentApiKey
             ?: return ApiResult.Error("API key not configured")
 
+        return when (currentProvider) {
+            AIProvider.OPENAI -> generatePromptOpenAI(apiKey, userPrompt, systemPrompt)
+            AIProvider.CLAUDE -> generatePromptClaude(apiKey, userPrompt, systemPrompt)
+        }
+    }
+
+    private suspend fun generatePromptOpenAI(
+        apiKey: String,
+        userPrompt: String,
+        systemPrompt: String
+    ): ApiResult<String> {
         val request = ChatCompletionRequest(
-            model = apiKeyManager.model,
+            model = currentModel,
             messages = listOf(
                 ChatMessage.system(systemPrompt),
                 ChatMessage.user(userPrompt)
@@ -44,8 +70,34 @@ class PromptService(
         )
 
         return try {
-            val response = executeRequest(apiKey, request)
+            val response = executeOpenAIRequest(apiKey, request)
             val content = response.choices.firstOrNull()?.message?.content
+                ?: return ApiResult.Error("No response content")
+            ApiResult.Success(content)
+        } catch (e: ApiException) {
+            ApiResult.Error(e.message ?: "Unknown error", e.code)
+        } catch (e: IOException) {
+            ApiResult.Error("Network error: ${e.message}")
+        } catch (e: Exception) {
+            ApiResult.Error("Unexpected error: ${e.message}")
+        }
+    }
+
+    private suspend fun generatePromptClaude(
+        apiKey: String,
+        userPrompt: String,
+        systemPrompt: String
+    ): ApiResult<String> {
+        val request = ClaudeMessagesRequest(
+            model = currentModel,
+            messages = listOf(ClaudeMessage.user(userPrompt)),
+            system = systemPrompt,
+            stream = false
+        )
+
+        return try {
+            val response = executeClaudeRequest(apiKey, request)
+            val content = response.content.firstOrNull { it.type == "text" }?.text
                 ?: return ApiResult.Error("No response content")
             ApiResult.Success(content)
         } catch (e: ApiException) {
@@ -61,25 +113,39 @@ class PromptService(
         userPrompt: String,
         systemPrompt: String
     ): Flow<StreamEvent> = flow {
-        val apiKey = apiKeyManager.apiKey
+        val apiKey = currentApiKey
         if (apiKey == null) {
             emit(StreamEvent.Error("API key not configured"))
             return@flow
         }
 
-        val request = ChatCompletionRequest(
-            model = apiKeyManager.model,
-            messages = listOf(
-                ChatMessage.system(systemPrompt),
-                ChatMessage.user(userPrompt)
-            ),
-            stream = true
-        )
-
         try {
             emit(StreamEvent.Started)
-            executeStreamingRequest(apiKey, request).collect { chunk ->
-                emit(chunk)
+            when (currentProvider) {
+                AIProvider.OPENAI -> {
+                    val request = ChatCompletionRequest(
+                        model = currentModel,
+                        messages = listOf(
+                            ChatMessage.system(systemPrompt),
+                            ChatMessage.user(userPrompt)
+                        ),
+                        stream = true
+                    )
+                    executeOpenAIStreamingRequest(apiKey, request).collect { chunk ->
+                        emit(chunk)
+                    }
+                }
+                AIProvider.CLAUDE -> {
+                    val request = ClaudeMessagesRequest(
+                        model = currentModel,
+                        messages = listOf(ClaudeMessage.user(userPrompt)),
+                        system = systemPrompt,
+                        stream = true
+                    )
+                    executeClaudeStreamingRequest(apiKey, request).collect { chunk ->
+                        emit(chunk)
+                    }
+                }
             }
             emit(StreamEvent.Completed)
         } catch (e: ApiException) {
@@ -91,7 +157,7 @@ class PromptService(
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun executeRequest(
+    private suspend fun executeOpenAIRequest(
         apiKey: String,
         chatRequest: ChatCompletionRequest
     ): ChatCompletionResponse = suspendCancellableCoroutine { continuation ->
@@ -99,7 +165,7 @@ class PromptService(
         val requestBody = jsonBody.toRequestBody(JSON_MEDIA_TYPE)
 
         val request = Request.Builder()
-            .url(API_URL)
+            .url(OPENAI_API_URL)
             .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
             .post(requestBody)
@@ -157,7 +223,7 @@ class PromptService(
         })
     }
 
-    private fun executeStreamingRequest(
+    private fun executeOpenAIStreamingRequest(
         apiKey: String,
         chatRequest: ChatCompletionRequest
     ): Flow<StreamEvent> = flow {
@@ -165,7 +231,7 @@ class PromptService(
         val requestBody = jsonBody.toRequestBody(JSON_MEDIA_TYPE)
 
         val request = Request.Builder()
-            .url(API_URL)
+            .url(OPENAI_API_URL)
             .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
             .header("Accept", "text/event-stream")
@@ -189,7 +255,7 @@ class PromptService(
             ?: throw ApiException("Empty response body")
 
         try {
-            parseSSEStream(reader).collect { event ->
+            parseOpenAISSEStream(reader).collect { event ->
                 emit(event)
             }
         } finally {
@@ -198,7 +264,7 @@ class PromptService(
         }
     }.flowOn(Dispatchers.IO)
 
-    private fun parseSSEStream(reader: BufferedReader): Flow<StreamEvent> = flow {
+    private fun parseOpenAISSEStream(reader: BufferedReader): Flow<StreamEvent> = flow {
         var line: String?
         while (reader.readLine().also { line = it } != null) {
             val currentLine = line ?: continue
@@ -223,8 +289,154 @@ class PromptService(
         }
     }
 
+    // Claude API methods
+
+    private suspend fun executeClaudeRequest(
+        apiKey: String,
+        claudeRequest: ClaudeMessagesRequest
+    ): ClaudeMessagesResponse = suspendCancellableCoroutine { continuation ->
+        val jsonBody = gson.toJson(claudeRequest)
+        val requestBody = jsonBody.toRequestBody(JSON_MEDIA_TYPE)
+
+        val request = Request.Builder()
+            .url(CLAUDE_API_URL)
+            .header("x-api-key", apiKey)
+            .header("anthropic-version", CLAUDE_API_VERSION)
+            .header("Content-Type", "application/json")
+            .post(requestBody)
+            .build()
+
+        val call = client.newCall(request)
+
+        continuation.invokeOnCancellation {
+            call.cancel()
+        }
+
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (continuation.isActive) {
+                    continuation.resumeWithException(e)
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use { resp ->
+                    val body = resp.body?.string()
+
+                    if (!resp.isSuccessful) {
+                        val error = try {
+                            body?.let { gson.fromJson(it, ClaudeError::class.java) }
+                        } catch (e: Exception) {
+                            null
+                        }
+                        val message = error?.error?.message ?: "HTTP ${resp.code}: ${resp.message}"
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(ApiException(message, resp.code))
+                        }
+                        return
+                    }
+
+                    if (body == null) {
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(ApiException("Empty response body"))
+                        }
+                        return
+                    }
+
+                    try {
+                        val result = gson.fromJson(body, ClaudeMessagesResponse::class.java)
+                        if (continuation.isActive) {
+                            continuation.resume(result)
+                        }
+                    } catch (e: Exception) {
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(ApiException("Failed to parse response: ${e.message}"))
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    private fun executeClaudeStreamingRequest(
+        apiKey: String,
+        claudeRequest: ClaudeMessagesRequest
+    ): Flow<StreamEvent> = flow {
+        val jsonBody = gson.toJson(claudeRequest)
+        val requestBody = jsonBody.toRequestBody(JSON_MEDIA_TYPE)
+
+        val request = Request.Builder()
+            .url(CLAUDE_API_URL)
+            .header("x-api-key", apiKey)
+            .header("anthropic-version", CLAUDE_API_VERSION)
+            .header("Content-Type", "application/json")
+            .header("Accept", "text/event-stream")
+            .post(requestBody)
+            .build()
+
+        val response = client.newCall(request).execute()
+
+        if (!response.isSuccessful) {
+            val body = response.body?.string()
+            val error = try {
+                body?.let { gson.fromJson(it, ClaudeError::class.java) }
+            } catch (e: Exception) {
+                null
+            }
+            val message = error?.error?.message ?: "HTTP ${response.code}: ${response.message}"
+            throw ApiException(message, response.code)
+        }
+
+        val reader = response.body?.source()?.inputStream()?.bufferedReader()
+            ?: throw ApiException("Empty response body")
+
+        try {
+            parseClaudeSSEStream(reader).collect { event ->
+                emit(event)
+            }
+        } finally {
+            reader.close()
+            response.close()
+        }
+    }.flowOn(Dispatchers.IO)
+
+    private fun parseClaudeSSEStream(reader: BufferedReader): Flow<StreamEvent> = flow {
+        var line: String?
+        while (reader.readLine().also { line = it } != null) {
+            val currentLine = line ?: continue
+
+            if (currentLine.startsWith("data: ")) {
+                val data = currentLine.removePrefix("data: ").trim()
+
+                try {
+                    val event = gson.fromJson(data, ClaudeStreamEvent::class.java)
+                    when (event.type) {
+                        "content_block_delta" -> {
+                            val text = event.delta?.text
+                            if (text != null) {
+                                emit(StreamEvent.Content(text))
+                            }
+                        }
+                        "message_stop" -> {
+                            break
+                        }
+                        "error" -> {
+                            throw ApiException("Stream error")
+                        }
+                    }
+                } catch (e: ApiException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Skip malformed chunks
+                }
+            }
+        }
+    }
+
     companion object {
-        private const val API_URL = "https://api.openai.com/v1/chat/completions"
+        private const val OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+        private const val CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
+        private const val CLAUDE_API_VERSION = "2023-06-01"
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
         private const val CONNECT_TIMEOUT_SECONDS = 30L
         private const val READ_TIMEOUT_SECONDS = 120L

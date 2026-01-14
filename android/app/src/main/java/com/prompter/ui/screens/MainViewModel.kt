@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.prompter.data.ApiKeyManager
+import com.prompter.data.SettingsRepository
 import com.prompter.db.*
 import com.prompter.service.PromptService
 import com.prompter.service.StreamEvent
@@ -28,15 +29,19 @@ enum class PromptLength {
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val settingsRepository = SettingsRepository(application)
     private val apiKeyManager = ApiKeyManager(application)
-    private val promptService = PromptService(apiKeyManager)
+    private val promptService = PromptService(
+        apiKeyManager,
+        settingsProvider = { settingsRepository.settings.value }
+    )
     private val database = PrompterDatabase.getDatabase(application)
     private val repository = PrompterRepository(
         database.promptHistoryDao(),
         database.customTemplateDao()
     )
 
-    private val _uiState = MutableStateFlow(MainUiState(hasApiKey = apiKeyManager.hasApiKey))
+    private val _uiState = MutableStateFlow(MainUiState(hasApiKey = settingsRepository.hasApiKey()))
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     val history: StateFlow<List<PromptHistoryWithVersions>> = repository.allHistory
@@ -230,12 +235,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setApiKey(key: String) {
-        apiKeyManager.apiKey = key
-        _uiState.update { it.copy(hasApiKey = apiKeyManager.hasApiKey) }
+        settingsRepository.updateApiKey(key)
+        _uiState.update { it.copy(hasApiKey = settingsRepository.hasApiKey()) }
     }
 
     fun checkApiKey() {
-        _uiState.update { it.copy(hasApiKey = apiKeyManager.hasApiKey) }
+        _uiState.update { it.copy(hasApiKey = settingsRepository.hasApiKey()) }
     }
 
     fun getSelectedHistoryVersions(): List<PromptVersionEntity> {
