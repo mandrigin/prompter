@@ -15,8 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,7 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.prompter.ui.components.HistoryDrawer
+import com.prompter.ui.components.TemplatePicker
+import com.prompter.ui.components.VersionSelector
 import com.prompter.ui.theme.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,89 +39,158 @@ fun MainScreen(
     onNavigateToSettings: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val history by viewModel.history.collectAsState()
+    val templates by viewModel.templates.collectAsState()
+    val generatingIds by viewModel.generatingIdsFlow.collectAsState()
     val context = LocalContext.current
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Prompter",
-                        color = TextPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                actions = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = TextSecondary
+    // Sync drawer state with viewModel
+    LaunchedEffect(uiState.showDrawer) {
+        if (uiState.showDrawer) {
+            drawerState.open()
+        } else {
+            drawerState.close()
+        }
+    }
+
+    LaunchedEffect(drawerState.currentValue) {
+        if (drawerState.currentValue == DrawerValue.Closed && uiState.showDrawer) {
+            viewModel.toggleDrawer()
+        }
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = Surface,
+                modifier = Modifier.width(280.dp)
+            ) {
+                HistoryDrawer(
+                    history = history,
+                    selectedId = uiState.selectedHistoryId,
+                    generatingIds = generatingIds,
+                    onSelect = { viewModel.selectHistoryItem(it) },
+                    onDelete = { viewModel.deleteHistory(it) },
+                    onArchive = { viewModel.archiveHistory(it) },
+                    onCreate = { viewModel.createNewPrompt() }
+                )
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            "Prompter",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.SemiBold
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Background
-                )
-            )
-        },
-        containerColor = Background
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
-        ) {
-            // API Key Warning
-            if (!uiState.hasApiKey) {
-                ApiKeyWarning(onNavigateToSettings = onNavigateToSettings)
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // Show expanded input when no output, compact when output exists
-            if (uiState.generatedOutput.isEmpty() && !uiState.isGenerating) {
-                // Expanded input state
-                PromptInputExpanded(
-                    promptText = uiState.promptText,
-                    onPromptChange = viewModel::updatePromptText,
-                    onGenerateShort = { viewModel.generatePrompt(PromptLength.SHORT) },
-                    onGenerateLong = { viewModel.generatePrompt(PromptLength.LONG) },
-                    isEnabled = uiState.hasApiKey && uiState.promptText.isNotBlank(),
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                // Compact input + output state
-                PromptInputCompact(
-                    promptText = uiState.promptText,
-                    onPromptChange = viewModel::updatePromptText,
-                    onGenerateShort = { viewModel.generatePrompt(PromptLength.SHORT) },
-                    onGenerateLong = { viewModel.generatePrompt(PromptLength.LONG) },
-                    isEnabled = uiState.hasApiKey && uiState.promptText.isNotBlank(),
-                    isGenerating = uiState.isGenerating
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Output area
-                OutputArea(
-                    output = uiState.generatedOutput,
-                    isGenerating = uiState.isGenerating,
-                    onCopy = {
-                        copyToClipboard(context, uiState.generatedOutput)
                     },
-                    onCancel = viewModel::cancelGeneration,
-                    modifier = Modifier.weight(1f)
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            scope.launch {
+                                if (drawerState.isClosed) {
+                                    drawerState.open()
+                                    viewModel.toggleDrawer()
+                                }
+                            }
+                        }) {
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = "History",
+                                tint = TextSecondary
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = TextSecondary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Background
+                    )
                 )
-            }
+            },
+            containerColor = Background
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(16.dp)
+            ) {
+                // API Key Warning
+                if (!uiState.hasApiKey) {
+                    ApiKeyWarning(onNavigateToSettings = onNavigateToSettings)
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
 
-            // Error snackbar
-            uiState.error?.let { error ->
-                Spacer(modifier = Modifier.height(8.dp))
-                ErrorCard(
-                    message = error,
-                    onDismiss = viewModel::clearError
-                )
+                // Show expanded input when no output, compact when output exists
+                if (uiState.generatedOutput.isEmpty() && !uiState.isGenerating) {
+                    // Expanded input state with templates
+                    ExpandedInputWithTemplates(
+                        promptText = uiState.promptText,
+                        templates = templates,
+                        onPromptChange = viewModel::updatePromptText,
+                        onGenerateShort = { viewModel.generatePrompt(PromptLength.SHORT) },
+                        onGenerateLong = { viewModel.generatePrompt(PromptLength.LONG) },
+                        onTemplateSelect = { viewModel.applyTemplate(it) },
+                        isEnabled = uiState.hasApiKey && uiState.promptText.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    // Compact input + output state
+                    PromptInputCompact(
+                        promptText = uiState.promptText,
+                        onPromptChange = viewModel::updatePromptText,
+                        onGenerateShort = { viewModel.generatePrompt(PromptLength.SHORT) },
+                        onGenerateLong = { viewModel.generatePrompt(PromptLength.LONG) },
+                        isEnabled = uiState.hasApiKey && uiState.promptText.isNotBlank(),
+                        isGenerating = uiState.isGenerating
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Version selector
+                    val versions = viewModel.getSelectedHistoryVersions()
+                    if (versions.size > 1) {
+                        VersionSelector(
+                            versions = versions,
+                            selectedIndex = uiState.selectedVersionIndex,
+                            onSelect = viewModel::selectVersion
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    // Output area
+                    OutputArea(
+                        output = uiState.generatedOutput,
+                        isGenerating = uiState.isGenerating,
+                        onCopy = {
+                            copyToClipboard(context, uiState.generatedOutput)
+                        },
+                        onCancel = viewModel::cancelGeneration,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Error snackbar
+                uiState.error?.let { error ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ErrorCard(
+                        message = error,
+                        onDismiss = viewModel::clearError
+                    )
+                }
             }
         }
     }
@@ -151,15 +223,26 @@ private fun ApiKeyWarning(onNavigateToSettings: () -> Unit) {
 }
 
 @Composable
-private fun PromptInputExpanded(
+private fun ExpandedInputWithTemplates(
     promptText: String,
+    templates: List<com.prompter.db.CustomTemplateEntity>,
     onPromptChange: (String) -> Unit,
     onGenerateShort: () -> Unit,
     onGenerateLong: () -> Unit,
+    onTemplateSelect: (com.prompter.db.CustomTemplateEntity) -> Unit,
     isEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
+        // Template picker
+        if (templates.isNotEmpty()) {
+            TemplatePicker(
+                templates = templates,
+                onSelect = onTemplateSelect
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         OutlinedTextField(
             value = promptText,
             onValueChange = onPromptChange,
